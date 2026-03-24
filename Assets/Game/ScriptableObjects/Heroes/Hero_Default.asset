@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 482a6fdfbcdf9cf4ba168c53a0851827, type: 3}
+  m_Name: Hero_Default
+  m_EditorClassIdentifier: Assembly-CSharp::SoulForge.Data.HeroDefinition
+  <HeroId>k__BackingField: hero_default
+  <DisplayName>k__BackingField: Knight
+  <Description>k__BackingField: Balanced frontliner with reliable pistol shots.
+  <StartingWeapon>k__BackingField: {fileID: 11400000, guid: 6e35e42d29ddafe4586980ef36620473,
+    type: 2}
+  <CharacterPrefab>k__BackingField: {fileID: 1638533906492673887, guid: 29076f779c0596547b7269aefead5970,
+    type: 3}
+  <InventoryCapacity>k__BackingField: 8
+  <MaxHealth>k__BackingField: 6
+  <MaxShield>k__BackingField: 4
+  <MoveSpeed>k__BackingField: 5
+  <DashCooldown>k__BackingField: 4

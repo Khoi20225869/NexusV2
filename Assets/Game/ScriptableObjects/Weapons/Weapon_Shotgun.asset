@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f0c22ac2dee1664418fd15253d24852a, type: 3}
+  m_Name: Weapon_Shotgun
+  m_EditorClassIdentifier: Assembly-CSharp::SoulForge.Data.WeaponDefinition
+  <WeaponId>k__BackingField: weapon_shotgun
+  <DisplayName>k__BackingField: Scatter Blaster
+  <Description>k__BackingField: Short-range burst weapon.
+  <Rarity>k__BackingField: 1
+  <MinRoomTier>k__BackingField: 1
+  <MaxRoomTier>k__BackingField: 2
+  <ShopPrice>k__BackingField: 50
+  <ChestWeight>k__BackingField: 7
+  <AccentColor>k__BackingField: {r: 0.52, g: 1, b: 0.62, a: 1}
+  <Damage>k__BackingField: 2
+  <FireRate>k__BackingField: 1.2
+  <ProjectileSpeed>k__BackingField: 11

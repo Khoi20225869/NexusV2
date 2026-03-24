@@ -1,0 +1,18 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3b10751ca22adf543807c85fccd46d2e, type: 3}
+  m_Name: Encounter_Default
+  m_EditorClassIdentifier: Assembly-CSharp::SoulForge.Data.EncounterDefinition
+  <EncounterId>k__BackingField: encounter_default
+  <Waves>k__BackingField:
+  - Enemy: {fileID: 11400000, guid: 5fcac2b7b85a2794a81e406baf7a1e92, type: 2}
+    Count: 3

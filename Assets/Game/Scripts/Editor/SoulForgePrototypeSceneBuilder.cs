@@ -1,0 +1,1034 @@
+﻿#if UNITY_EDITOR
+using SoulForge.Bootstrap;
+using SoulForge.CameraSystem;
+using SoulForge.Combat;
+using SoulForge.Data;
+using SoulForge.Economy;
+using SoulForge.Enemies;
+using SoulForge.Feedback;
+using SoulForge.Player;
+using SoulForge.Rooms;
+using SoulForge.UI;
+using SoulForge.Viewer;
+using TMPro;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.SceneManagement;
+using UnityEngine.UI;
+
+namespace SoulForge.Editor
+{
+    public static class SoulForgePrototypeSceneBuilder
+    {
+        [MenuItem("Tools/SoulForge/Create Run Prototype Scene")]
+        public static void CreateRunPrototypeScene()
+        {
+            SoulForgePrototypeAssetCreator.CreatePrototypeAssets();
+
+            Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            scene.name = "Run_Prototype";
+
+            CreateCamera();
+            CreateEventSystem();
+
+            GameObject bootstrapRoot = new("Bootstrap");
+            bootstrapRoot.AddComponent<GameBootstrap>();
+            RunController runController = bootstrapRoot.AddComponent<RunController>();
+            bootstrapRoot.AddComponent<RunResetController>();
+            CharacterSelectionController selectionController = bootstrapRoot.AddComponent<CharacterSelectionController>();
+
+            GameObject player = CreatePlayer();
+            PlayerHealth playerHealth = player.GetComponent<PlayerHealth>();
+
+            RoomController roomA = CreateRoom("Room_A", new Vector3(0f, 0f, 0f));
+            RoomController roomB = CreateRoom("Room_B", new Vector3(25f, 0f, 0f));
+            RoomController roomC = CreateRoom("Room_C", new Vector3(50f, 0f, 0f));
+
+            AssignRunController(runController, playerHealth, roomA, roomB, roomC);
+            CreateTransitions(runController, roomA, roomB, roomC);
+            CreateFinishGate(runController, roomC);
+            CreateBossSignal(runController, roomC);
+
+            GameObject viewerRuntime = CreateViewerRuntime(runController, playerHealth, roomA);
+            StateBroadcaster stateBroadcaster = viewerRuntime.GetComponent<StateBroadcaster>();
+            AssignStateBroadcaster(runController, stateBroadcaster);
+
+            CreateUI(runController);
+            AssignSelectionController(selectionController);
+
+            string scenePath = "Assets/Game/Scenes/Run_Prototype.unity";
+            EditorSceneManager.SaveScene(scene, scenePath);
+            AddSceneToBuildSettings(scenePath);
+            AssetDatabase.Refresh();
+            EditorGUIUtility.PingObject(AssetDatabase.LoadAssetAtPath<SceneAsset>(scenePath));
+            Debug.Log("Run_Prototype baseline scene created.");
+        }
+
+        private static void CreateCamera()
+        {
+            GameObject cameraObject = new("Main Camera");
+            Camera camera = cameraObject.AddComponent<Camera>();
+            camera.orthographic = true;
+            camera.orthographicSize = 8f;
+            cameraObject.tag = "MainCamera";
+            cameraObject.transform.position = new Vector3(0f, 0f, -10f);
+            cameraObject.AddComponent<CameraFeedback>();
+            AudioSource audioSource = cameraObject.AddComponent<AudioSource>();
+            audioSource.playOnAwake = false;
+            audioSource.spatialBlend = 0f;
+        }
+
+        private static void CreateEventSystem()
+        {
+            GameObject eventSystem = new("EventSystem");
+            eventSystem.AddComponent<EventSystem>();
+            eventSystem.AddComponent<StandaloneInputModule>();
+        }
+
+        private static GameObject CreatePlayer()
+        {
+            GameObject playerPrefab = LoadDefaultSpumUnitPrefab();
+            GameObject player = playerPrefab != null
+                ? (GameObject)PrefabUtility.InstantiatePrefab(playerPrefab)
+                : GameObject.CreatePrimitive(PrimitiveType.Quad);
+
+            player.name = "Player";
+            if (player.GetComponent<MeshCollider>() != null)
+            {
+                Object.DestroyImmediate(player.GetComponent<MeshCollider>());
+            }
+
+            player.transform.position = new Vector3(-8f, 0f, 0f);
+            player.transform.localScale = playerPrefab != null ? new Vector3(1f, 1f, 1f) : new Vector3(1f, 1.5f, 1f);
+
+            Rigidbody2D rigidbody2D = player.AddComponent<Rigidbody2D>();
+            rigidbody2D.gravityScale = 0f;
+            rigidbody2D.bodyType = RigidbodyType2D.Kinematic;
+
+            BoxCollider2D collider2D = player.GetComponent<BoxCollider2D>();
+            if (collider2D == null)
+            {
+                collider2D = player.AddComponent<BoxCollider2D>();
+            }
+            collider2D.isTrigger = false;
+
+            player.AddComponent<SpumCharacterView>();
+            player.AddComponent<WeaponRuntime>();
+            player.AddComponent<PlayerController>();
+            player.AddComponent<PlayerAim>();
+            player.AddComponent<PlayerHealth>();
+            player.AddComponent<PlayerWeaponController>();
+            player.AddComponent<PlayerInventory>();
+            player.AddComponent<WeaponRuntimeBridge>();
+            player.AddComponent<InventoryInputController>();
+            player.AddComponent<SpriteFlashFeedback>();
+
+            GameObject firePoint = new("FirePoint");
+            firePoint.transform.SetParent(player.transform, false);
+            firePoint.transform.localPosition = new Vector3(0.8f, 0f, 0f);
+
+            AssignPlayerAssets(player);
+            return player;
+        }
+
+        private static void AssignPlayerAssets(GameObject player)
+        {
+            HeroDefinition hero = AssetDatabase.LoadAssetAtPath<HeroDefinition>("Assets/Game/ScriptableObjects/Heroes/Hero_Knight.asset");
+            WeaponDefinition pistol = AssetDatabase.LoadAssetAtPath<WeaponDefinition>("Assets/Game/ScriptableObjects/Weapons/Weapon_Pistol.asset");
+            Projectile projectilePrefab = CreateProjectilePrototypePrefab();
+            TransientVisualEffect transientEffect = CreateTransientEffectPrefab();
+            GameFeelController gameFeelController = Object.FindFirstObjectByType<GameFeelController>(FindObjectsInactive.Include);
+
+            SerializedObject playerController = new(player.GetComponent<PlayerController>());
+            playerController.FindProperty("heroDefinition").objectReferenceValue = hero;
+            playerController.FindProperty("characterView").objectReferenceValue = player.GetComponent<SpumCharacterView>();
+            playerController.ApplyModifiedPropertiesWithoutUndo();
+
+            SerializedObject playerHealth = new(player.GetComponent<PlayerHealth>());
+            playerHealth.FindProperty("heroDefinition").objectReferenceValue = hero;
+            playerHealth.FindProperty("characterView").objectReferenceValue = player.GetComponent<SpumCharacterView>();
+            playerHealth.FindProperty("flashFeedback").objectReferenceValue = player.GetComponent<SpriteFlashFeedback>();
+            playerHealth.FindProperty("cameraFeedback").objectReferenceValue = Object.FindFirstObjectByType<CameraFeedback>();
+            playerHealth.FindProperty("gameFeelController").objectReferenceValue = gameFeelController;
+            playerHealth.ApplyModifiedPropertiesWithoutUndo();
+
+            SerializedObject playerAim = new(player.GetComponent<PlayerAim>());
+            playerAim.FindProperty("weaponDefinition").objectReferenceValue = pistol;
+            playerAim.FindProperty("projectilePrefab").objectReferenceValue = projectilePrefab;
+            playerAim.FindProperty("firePoint").objectReferenceValue = player.transform.Find("FirePoint");
+            playerAim.FindProperty("visualRoot").objectReferenceValue = player.transform;
+            playerAim.FindProperty("characterView").objectReferenceValue = player.GetComponent<SpumCharacterView>();
+            playerAim.FindProperty("weaponRuntime").objectReferenceValue = player.GetComponent<WeaponRuntime>();
+            playerAim.FindProperty("cameraFeedback").objectReferenceValue = Object.FindFirstObjectByType<CameraFeedback>();
+            playerAim.FindProperty("muzzleFlashPrefab").objectReferenceValue = transientEffect;
+            playerAim.FindProperty("gameFeelController").objectReferenceValue = gameFeelController;
+            playerAim.ApplyModifiedPropertiesWithoutUndo();
+
+            SerializedObject weaponRuntime = new(player.GetComponent<WeaponRuntime>());
+            weaponRuntime.FindProperty("weaponDefinition").objectReferenceValue = pistol;
+            weaponRuntime.ApplyModifiedPropertiesWithoutUndo();
+
+            SerializedObject playerWeaponController = new(player.GetComponent<PlayerWeaponController>());
+            playerWeaponController.FindProperty("weaponRuntime").objectReferenceValue = player.GetComponent<WeaponRuntime>();
+            playerWeaponController.ApplyModifiedPropertiesWithoutUndo();
+
+            SerializedObject weaponBridge = new(player.GetComponent<WeaponRuntimeBridge>());
+            weaponBridge.FindProperty("weaponRuntime").objectReferenceValue = player.GetComponent<WeaponRuntime>();
+            weaponBridge.ApplyModifiedPropertiesWithoutUndo();
+
+            SerializedObject inventory = new(player.GetComponent<PlayerInventory>());
+            inventory.FindProperty("playerWeaponController").objectReferenceValue = player.GetComponent<PlayerWeaponController>();
+            inventory.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static Projectile CreateProjectilePrototypePrefab()
+        {
+            const string prefabPath = "Assets/Game/Prefabs/Weapons/Projectile_Player.prefab";
+            Projectile existing = AssetDatabase.LoadAssetAtPath<Projectile>(prefabPath);
+            if (existing != null)
+            {
+                return existing;
+            }
+
+            GameObject projectile = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            projectile.name = "Projectile_Player";
+            Object.DestroyImmediate(projectile.GetComponent<MeshCollider>());
+            projectile.transform.localScale = new Vector3(0.25f, 0.25f, 1f);
+            CircleCollider2D collider2D = projectile.AddComponent<CircleCollider2D>();
+            collider2D.isTrigger = true;
+            Projectile projectileComponent = projectile.AddComponent<Projectile>();
+            SerializedObject projectileSo = new(projectileComponent);
+            projectileSo.FindProperty("impactEffectPrefab").objectReferenceValue = CreateTransientEffectPrefab();
+            projectileSo.ApplyModifiedPropertiesWithoutUndo();
+
+            PrefabUtility.SaveAsPrefabAsset(projectile, prefabPath);
+            Object.DestroyImmediate(projectile);
+            return AssetDatabase.LoadAssetAtPath<Projectile>(prefabPath);
+        }
+
+        private static RoomController CreateRoom(string roomName, Vector3 position)
+        {
+            GameObject room = new(roomName);
+            room.transform.position = position;
+
+            RoomController roomController = room.AddComponent<RoomController>();
+            RewardSpawner rewardSpawner = room.AddComponent<RewardSpawner>();
+            ConfigureRewardSpawner(room.transform, rewardSpawner);
+
+            SerializedObject roomControllerSo = new(roomController);
+            roomControllerSo.FindProperty("roomId").stringValue = roomName.ToLowerInvariant();
+            roomControllerSo.FindProperty("roomTier").enumValueIndex = roomName switch
+            {
+                "Room_A" => 0,
+                "Room_B" => 1,
+                _ => 2
+            };
+            roomControllerSo.FindProperty("rewardSpawner").objectReferenceValue = rewardSpawner;
+            roomControllerSo.ApplyModifiedPropertiesWithoutUndo();
+            rewardSpawner.OwnerRoom = roomController;
+
+            EnemySpawner spawner = room.AddComponent<EnemySpawner>();
+            SerializedObject spawnerSo = new(spawner);
+            spawnerSo.FindProperty("ownerRoom").objectReferenceValue = roomController;
+            spawnerSo.FindProperty("spawnOnStart").boolValue = roomName == "Room_A";
+            spawnerSo.ApplyModifiedPropertiesWithoutUndo();
+
+            CreateSpawnPoint(room.transform, "WeakSpawn", "weak_spawn", new Vector3(4f, 0f, 0f), spawner, false);
+            CreateSpawnPoint(room.transform, "EliteSpawn", "elite_spawn", new Vector3(6f, 0f, 0f), spawner, true);
+
+            return roomController;
+        }
+
+        private static void ConfigureRewardSpawner(Transform roomRoot, RewardSpawner rewardSpawner)
+        {
+            if (rewardSpawner == null)
+            {
+                return;
+            }
+
+            RewardDefinition reward = AssetDatabase.LoadAssetAtPath<RewardDefinition>("Assets/Game/ScriptableObjects/Rewards/Reward_Default.asset");
+            WeaponDefinition pistol = AssetDatabase.LoadAssetAtPath<WeaponDefinition>("Assets/Game/ScriptableObjects/Weapons/Weapon_Pistol.asset");
+            WeaponDefinition shotgun = AssetDatabase.LoadAssetAtPath<WeaponDefinition>("Assets/Game/ScriptableObjects/Weapons/Weapon_Shotgun.asset");
+            WeaponDefinition viewerDrop = AssetDatabase.LoadAssetAtPath<WeaponDefinition>("Assets/Game/ScriptableObjects/Weapons/Weapon_ViewerDrop.asset");
+            WeaponChest chestPrefab = CreateWeaponChestPrefab();
+
+            GameObject chestPoint = new("ChestSpawn");
+            chestPoint.transform.SetParent(roomRoot, false);
+            chestPoint.transform.localPosition = new Vector3(1.5f, -0.5f, 0f);
+
+            SerializedObject so = new(rewardSpawner);
+            SerializedProperty rewards = so.FindProperty("possibleRewards");
+            rewards.ClearArray();
+            rewards.InsertArrayElementAtIndex(0);
+            rewards.GetArrayElementAtIndex(0).objectReferenceValue = reward;
+
+            SerializedProperty chestWeapons = so.FindProperty("chestWeapons");
+            chestWeapons.ClearArray();
+            WeaponDefinition[] weaponPool = { pistol, shotgun, viewerDrop };
+            for (int i = 0; i < weaponPool.Length; i++)
+            {
+                chestWeapons.InsertArrayElementAtIndex(i);
+                chestWeapons.GetArrayElementAtIndex(i).objectReferenceValue = weaponPool[i];
+            }
+
+            SerializedProperty lootTable = so.FindProperty("chestLootTable");
+            lootTable.ClearArray();
+            for (int i = 0; i < weaponPool.Length; i++)
+            {
+                lootTable.InsertArrayElementAtIndex(i);
+                SerializedProperty lootEntry = lootTable.GetArrayElementAtIndex(i);
+                lootEntry.FindPropertyRelative("Weapon").objectReferenceValue = weaponPool[i];
+                lootEntry.FindPropertyRelative("Weight").intValue = weaponPool[i] != null ? Mathf.Max(1, weaponPool[i].ChestWeight) : 1;
+            }
+
+            so.FindProperty("chestPrefab").objectReferenceValue = chestPrefab;
+            so.FindProperty("chestSpawnPoint").objectReferenceValue = chestPoint.transform;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static void CreateSpawnPoint(Transform roomRoot, string name, string spawnId, Vector3 localPosition, EnemySpawner spawner, bool elite)
+        {
+            GameObject spawnPoint = new(name);
+            spawnPoint.transform.SetParent(roomRoot);
+            spawnPoint.transform.localPosition = localPosition;
+
+            EnemyController enemyPrefab = CreateEnemyPrototypePrefab(elite);
+            EnemyDefinition definition = AssetDatabase.LoadAssetAtPath<EnemyDefinition>(
+                elite
+                    ? "Assets/Game/ScriptableObjects/Enemies/Enemy_Elite.asset"
+                    : "Assets/Game/ScriptableObjects/Enemies/Enemy_Weak.asset");
+
+            SerializedObject so = new(spawner);
+            SerializedProperty entries = so.FindProperty("spawnEntries");
+            int index = entries.arraySize;
+            entries.InsertArrayElementAtIndex(index);
+            SerializedProperty entry = entries.GetArrayElementAtIndex(index);
+            entry.FindPropertyRelative("SpawnId").stringValue = spawnId;
+            entry.FindPropertyRelative("Prefab").objectReferenceValue = enemyPrefab;
+            entry.FindPropertyRelative("Definition").objectReferenceValue = definition;
+            entry.FindPropertyRelative("SpawnPoint").objectReferenceValue = spawnPoint.transform;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static EnemyController CreateEnemyPrototypePrefab(bool elite)
+        {
+            string prefabName = elite ? "EnemyElitePrototype" : "EnemyWeakPrototype";
+            string prefabPath = $"Assets/Game/Prefabs/Enemies/{prefabName}.prefab";
+            GameObject sourcePrefab = LoadDefaultSpumUnitPrefab();
+            GameObject enemy = sourcePrefab != null
+                ? (GameObject)PrefabUtility.InstantiatePrefab(sourcePrefab)
+                : GameObject.CreatePrimitive(PrimitiveType.Quad);
+
+            enemy.name = prefabName;
+            ConfigureEnemyPrototype(enemy, elite);
+
+            PrefabUtility.SaveAsPrefabAsset(enemy, prefabPath);
+            Object.DestroyImmediate(enemy);
+            return AssetDatabase.LoadAssetAtPath<EnemyController>(prefabPath);
+        }
+
+        private static void ConfigureEnemyPrototype(GameObject enemy, bool elite)
+        {
+            if (enemy.GetComponent<MeshCollider>() != null)
+            {
+                Object.DestroyImmediate(enemy.GetComponent<MeshCollider>());
+            }
+
+            enemy.transform.localScale = elite ? new Vector3(1.2f, 1.2f, 1f) : new Vector3(1f, 1f, 1f);
+
+            if (enemy.GetComponent<BoxCollider2D>() == null)
+            {
+                enemy.AddComponent<BoxCollider2D>();
+            }
+
+            SpumCharacterView characterView = enemy.GetComponent<SpumCharacterView>();
+            if (characterView == null)
+            {
+                characterView = enemy.AddComponent<SpumCharacterView>();
+            }
+
+            if (enemy.GetComponent<SpriteFlashFeedback>() == null)
+            {
+                enemy.AddComponent<SpriteFlashFeedback>();
+            }
+
+            EnemyController controller = enemy.GetComponent<EnemyController>();
+            if (controller == null)
+            {
+                controller = enemy.AddComponent<EnemyController>();
+            }
+
+            Projectile projectilePrefab = CreateEnemyProjectilePrototypePrefab(elite);
+
+            Transform firePoint = enemy.transform.Find("FirePoint");
+            if (firePoint == null)
+            {
+                GameObject firePointObject = new("FirePoint");
+                firePointObject.transform.SetParent(enemy.transform, false);
+                firePointObject.transform.localPosition = new Vector3(0.65f, 0.1f, 0f);
+                firePoint = firePointObject.transform;
+            }
+
+            EnemyDefinition definition = AssetDatabase.LoadAssetAtPath<EnemyDefinition>(
+                elite
+                    ? "Assets/Game/ScriptableObjects/Enemies/Enemy_Elite.asset"
+                    : "Assets/Game/ScriptableObjects/Enemies/Enemy_Weak.asset");
+            SerializedObject so = new(controller);
+            so.FindProperty("definition").objectReferenceValue = definition;
+            so.FindProperty("projectilePrefab").objectReferenceValue = projectilePrefab;
+            so.FindProperty("firePoint").objectReferenceValue = firePoint;
+            so.FindProperty("characterView").objectReferenceValue = characterView;
+            so.FindProperty("flashFeedback").objectReferenceValue = enemy.GetComponent<SpriteFlashFeedback>();
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static Projectile CreateEnemyProjectilePrototypePrefab(bool elite)
+        {
+            string prefabName = elite ? "Projectile_EnemyElite" : "Projectile_EnemyWeak";
+            string prefabPath = $"Assets/Game/Prefabs/Weapons/{prefabName}.prefab";
+            Projectile existing = AssetDatabase.LoadAssetAtPath<Projectile>(prefabPath);
+            if (existing != null)
+            {
+                return existing;
+            }
+
+            GameObject projectile = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            projectile.name = prefabName;
+            Object.DestroyImmediate(projectile.GetComponent<MeshCollider>());
+            projectile.transform.localScale = elite ? new Vector3(0.35f, 0.35f, 1f) : new Vector3(0.25f, 0.25f, 1f);
+
+            MeshRenderer renderer = projectile.GetComponent<MeshRenderer>();
+            if (renderer != null)
+            {
+                renderer.sharedMaterial = new Material(Shader.Find("Sprites/Default"))
+                {
+                    color = elite ? new Color(1f, 0.45f, 0.2f, 1f) : new Color(1f, 0.2f, 0.2f, 1f)
+                };
+            }
+
+            CircleCollider2D collider2D = projectile.AddComponent<CircleCollider2D>();
+            collider2D.isTrigger = true;
+            Projectile projectileComponent = projectile.AddComponent<Projectile>();
+            SerializedObject projectileSo = new(projectileComponent);
+            projectileSo.FindProperty("impactEffectPrefab").objectReferenceValue = CreateTransientEffectPrefab();
+            projectileSo.ApplyModifiedPropertiesWithoutUndo();
+
+            PrefabUtility.SaveAsPrefabAsset(projectile, prefabPath);
+            Object.DestroyImmediate(projectile);
+            return AssetDatabase.LoadAssetAtPath<Projectile>(prefabPath);
+        }
+
+        private static WeaponChest CreateWeaponChestPrefab()
+        {
+            const string prefabPath = "Assets/Game/Prefabs/Interactables/WeaponChest.prefab";
+            WeaponChest existing = AssetDatabase.LoadAssetAtPath<WeaponChest>(prefabPath);
+            if (existing != null)
+            {
+                return existing;
+            }
+
+            EnsurePrefabFolders();
+
+            GameObject chest = new("WeaponChest");
+            SpriteRenderer renderer = chest.AddComponent<SpriteRenderer>();
+            renderer.color = new Color(0.68f, 0.46f, 0.16f, 1f);
+
+            BoxCollider2D collider = chest.AddComponent<BoxCollider2D>();
+            collider.isTrigger = true;
+            collider.size = new Vector2(1.4f, 1.1f);
+
+            WeaponChest weaponChest = chest.AddComponent<WeaponChest>();
+
+            GameObject prompt = new("Prompt");
+            prompt.transform.SetParent(chest.transform, false);
+            prompt.transform.localPosition = new Vector3(0f, 1.1f, 0f);
+            TMP_Text promptText = prompt.AddComponent<TextMeshPro>();
+            promptText.fontSize = 2.5f;
+            promptText.alignment = TextAlignmentOptions.Center;
+            promptText.color = Color.white;
+
+            GameObject dropPoint = new("DropPoint");
+            dropPoint.transform.SetParent(chest.transform, false);
+            dropPoint.transform.localPosition = new Vector3(0f, 0.8f, 0f);
+
+            SerializedObject so = new(weaponChest);
+            so.FindProperty("pickupPrefab").objectReferenceValue = CreateWeaponPickupPrefab();
+            so.FindProperty("dropPoint").objectReferenceValue = dropPoint.transform;
+            so.FindProperty("promptText").objectReferenceValue = promptText;
+            so.FindProperty("chestRenderer").objectReferenceValue = renderer;
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            PrefabUtility.SaveAsPrefabAsset(chest, prefabPath);
+            Object.DestroyImmediate(chest);
+            return AssetDatabase.LoadAssetAtPath<WeaponChest>(prefabPath);
+        }
+
+        private static WeaponPickup CreateWeaponPickupPrefab()
+        {
+            const string prefabPath = "Assets/Game/Prefabs/Interactables/WeaponPickup.prefab";
+            WeaponPickup existing = AssetDatabase.LoadAssetAtPath<WeaponPickup>(prefabPath);
+            if (existing != null)
+            {
+                return existing;
+            }
+
+            EnsurePrefabFolders();
+
+            GameObject pickup = new("WeaponPickup");
+            SpriteRenderer renderer = pickup.AddComponent<SpriteRenderer>();
+            renderer.color = new Color(0.2f, 0.9f, 1f, 1f);
+
+            CircleCollider2D collider = pickup.AddComponent<CircleCollider2D>();
+            collider.isTrigger = true;
+            collider.radius = 0.45f;
+
+            WeaponPickup weaponPickup = pickup.AddComponent<WeaponPickup>();
+
+            GameObject label = new("Label");
+            label.transform.SetParent(pickup.transform, false);
+            label.transform.localPosition = new Vector3(0f, 0.9f, 0f);
+            TMP_Text labelText = label.AddComponent<TextMeshPro>();
+            labelText.fontSize = 2f;
+            labelText.alignment = TextAlignmentOptions.Center;
+            labelText.color = Color.white;
+
+            SerializedObject so = new(weaponPickup);
+            so.FindProperty("labelText").objectReferenceValue = labelText;
+            so.FindProperty("frameRenderer").objectReferenceValue = renderer;
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            PrefabUtility.SaveAsPrefabAsset(pickup, prefabPath);
+            Object.DestroyImmediate(pickup);
+            return AssetDatabase.LoadAssetAtPath<WeaponPickup>(prefabPath);
+        }
+
+        private static void EnsurePrefabFolders()
+        {
+            if (!AssetDatabase.IsValidFolder("Assets/Game/Prefabs"))
+            {
+                AssetDatabase.CreateFolder("Assets/Game", "Prefabs");
+            }
+
+            if (!AssetDatabase.IsValidFolder("Assets/Game/Prefabs/Interactables"))
+            {
+                AssetDatabase.CreateFolder("Assets/Game/Prefabs", "Interactables");
+            }
+        }
+
+        private static TransientVisualEffect CreateTransientEffectPrefab()
+        {
+            const string prefabPath = "Assets/Game/Prefabs/Interactables/TransientEffect.prefab";
+            TransientVisualEffect existing = AssetDatabase.LoadAssetAtPath<TransientVisualEffect>(prefabPath);
+            if (existing != null)
+            {
+                return existing;
+            }
+
+            EnsurePrefabFolders();
+
+            GameObject effect = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            effect.name = "TransientEffect";
+            Object.DestroyImmediate(effect.GetComponent<MeshCollider>());
+            effect.transform.localScale = new Vector3(0.3f, 0.3f, 1f);
+            effect.AddComponent<TransientVisualEffect>();
+
+            PrefabUtility.SaveAsPrefabAsset(effect, prefabPath);
+            Object.DestroyImmediate(effect);
+            return AssetDatabase.LoadAssetAtPath<TransientVisualEffect>(prefabPath);
+        }
+
+        private static void AssignRunController(RunController runController, PlayerHealth playerHealth, RoomController roomA, RoomController roomB, RoomController roomC)
+        {
+            SerializedObject so = new(runController);
+            SerializedProperty roomSequence = so.FindProperty("roomSequence");
+            roomSequence.ClearArray();
+            RoomController[] rooms = { roomA, roomB, roomC };
+            for (int i = 0; i < rooms.Length; i++)
+            {
+                roomSequence.InsertArrayElementAtIndex(i);
+                roomSequence.GetArrayElementAtIndex(i).objectReferenceValue = rooms[i];
+            }
+
+            so.FindProperty("playerHealth").objectReferenceValue = playerHealth;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static GameObject CreateViewerRuntime(RunController runController, PlayerHealth playerHealth, RoomController roomA)
+        {
+            GameObject viewerRuntime = new("ViewerRuntime");
+            ViewerSessionService sessionService = viewerRuntime.AddComponent<ViewerSessionService>();
+            ViewerEconomyService economyService = viewerRuntime.AddComponent<ViewerEconomyService>();
+            ViewerRoomBudgetService budgetService = viewerRuntime.AddComponent<ViewerRoomBudgetService>();
+            ViewerActionValidator validator = viewerRuntime.AddComponent<ViewerActionValidator>();
+            ViewerActionQueue queue = viewerRuntime.AddComponent<ViewerActionQueue>();
+            StateBroadcaster broadcaster = viewerRuntime.AddComponent<StateBroadcaster>();
+            ViewerActionExecutor executor = viewerRuntime.AddComponent<ViewerActionExecutor>();
+            HostViewerWebSocketServer server = viewerRuntime.AddComponent<HostViewerWebSocketServer>();
+            viewerRuntime.AddComponent<LocalViewerCommandTester>();
+
+            ViewerStoreCatalog storeCatalog = AssetDatabase.LoadAssetAtPath<ViewerStoreCatalog>("Assets/Game/ScriptableObjects/Viewer/ViewerStoreCatalog.asset");
+            ViewerEconomyConfig economyConfig = AssetDatabase.LoadAssetAtPath<ViewerEconomyConfig>("Assets/Game/ScriptableObjects/Viewer/ViewerEconomyConfig.asset");
+            WeaponDefinition viewerDropWeapon = AssetDatabase.LoadAssetAtPath<WeaponDefinition>("Assets/Game/ScriptableObjects/Weapons/Weapon_ViewerDrop.asset");
+
+            SerializedObject economySo = new(economyService);
+            economySo.FindProperty("config").objectReferenceValue = economyConfig;
+            economySo.ApplyModifiedPropertiesWithoutUndo();
+
+            SerializedObject budgetSo = new(budgetService);
+            budgetSo.FindProperty("config").objectReferenceValue = economyConfig;
+            budgetSo.ApplyModifiedPropertiesWithoutUndo();
+
+            SerializedObject validatorSo = new(validator);
+            validatorSo.FindProperty("storeCatalog").objectReferenceValue = storeCatalog;
+            validatorSo.FindProperty("economyService").objectReferenceValue = economyService;
+            validatorSo.FindProperty("roomBudgetService").objectReferenceValue = budgetService;
+            validatorSo.ApplyModifiedPropertiesWithoutUndo();
+
+            SerializedObject queueSo = new(queue);
+            queueSo.FindProperty("config").objectReferenceValue = economyConfig;
+            queueSo.ApplyModifiedPropertiesWithoutUndo();
+
+            SerializedObject executorSo = new(executor);
+            executorSo.FindProperty("validator").objectReferenceValue = validator;
+            executorSo.FindProperty("queue").objectReferenceValue = queue;
+            executorSo.FindProperty("economyService").objectReferenceValue = economyService;
+            executorSo.FindProperty("broadcaster").objectReferenceValue = broadcaster;
+            executorSo.FindProperty("enemySpawner").objectReferenceValue = roomA.GetComponent<EnemySpawner>();
+            executorSo.FindProperty("playerHealth").objectReferenceValue = playerHealth;
+            executorSo.FindProperty("playerWeaponController").objectReferenceValue = playerHealth.GetComponent<PlayerWeaponController>();
+            executorSo.FindProperty("playerInventory").objectReferenceValue = playerHealth.GetComponent<PlayerInventory>();
+            executorSo.FindProperty("roomController").objectReferenceValue = roomA;
+            executorSo.FindProperty("viewerActionQueue").objectReferenceValue = queue;
+            executorSo.FindProperty("roomBudgetService").objectReferenceValue = budgetService;
+            executorSo.FindProperty("fallbackViewerWeapon").objectReferenceValue = viewerDropWeapon;
+            executorSo.ApplyModifiedPropertiesWithoutUndo();
+
+            SerializedObject serverSo = new(server);
+            serverSo.FindProperty("sessionService").objectReferenceValue = sessionService;
+            serverSo.FindProperty("stateBroadcaster").objectReferenceValue = broadcaster;
+            serverSo.FindProperty("actionExecutor").objectReferenceValue = executor;
+            serverSo.FindProperty("economyService").objectReferenceValue = economyService;
+            serverSo.FindProperty("runController").objectReferenceValue = runController;
+            serverSo.FindProperty("playerHealth").objectReferenceValue = playerHealth;
+            serverSo.FindProperty("viewerActionQueue").objectReferenceValue = queue;
+            serverSo.FindProperty("roomBudgetService").objectReferenceValue = budgetService;
+            serverSo.ApplyModifiedPropertiesWithoutUndo();
+
+            _ = sessionService;
+            return viewerRuntime;
+        }
+
+        private static void AssignStateBroadcaster(RunController runController, StateBroadcaster stateBroadcaster)
+        {
+            SerializedObject so = new(runController);
+            so.FindProperty("stateBroadcaster").objectReferenceValue = stateBroadcaster;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static void CreateTransitions(RunController runController, RoomController roomA, RoomController roomB, RoomController roomC)
+        {
+            CreateTransition("Transition_A_B", runController, roomA, roomB, new Vector3(12f, 0f, 0f));
+            CreateTransition("Transition_B_C", runController, roomB, roomC, new Vector3(37f, 0f, 0f));
+        }
+
+        private static void CreateTransition(string name, RunController runController, RoomController sourceRoom, RoomController targetRoom, Vector3 position)
+        {
+            GameObject trigger = new(name);
+            trigger.transform.position = position;
+            BoxCollider2D collider = trigger.AddComponent<BoxCollider2D>();
+            collider.size = new Vector2(2f, 4f);
+            collider.isTrigger = true;
+
+            RoomTransitionTrigger transition = trigger.AddComponent<RoomTransitionTrigger>();
+            SerializedObject so = new(transition);
+            so.FindProperty("runController").objectReferenceValue = runController;
+            so.FindProperty("targetRoom").objectReferenceValue = targetRoom;
+            so.FindProperty("sourceRoom").objectReferenceValue = sourceRoom;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static void CreateFinishGate(RunController runController, RoomController finalRoom)
+        {
+            GameObject gate = new("FinishGate");
+            gate.transform.position = new Vector3(62f, 0f, 0f);
+            BoxCollider2D collider = gate.AddComponent<BoxCollider2D>();
+            collider.size = new Vector2(2f, 4f);
+            collider.isTrigger = true;
+
+            RunFinishGate finishGate = gate.AddComponent<RunFinishGate>();
+            SerializedObject so = new(finishGate);
+            so.FindProperty("runController").objectReferenceValue = runController;
+            so.FindProperty("ownerRoom").objectReferenceValue = finalRoom;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static void CreateBossSignal(RunController runController, RoomController finalRoom)
+        {
+            BossRoomSignal signal = finalRoom.gameObject.AddComponent<BossRoomSignal>();
+            SerializedObject so = new(signal);
+            so.FindProperty("runController").objectReferenceValue = runController;
+            so.FindProperty("ownerRoom").objectReferenceValue = finalRoom;
+            so.FindProperty("bossName").stringValue = "Forge Sentinel";
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static void CreateUI(RunController runController)
+        {
+            GameObject canvasObject = new("UIRoot");
+            Canvas canvas = canvasObject.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvasObject.AddComponent<CanvasScaler>();
+            canvasObject.AddComponent<GraphicRaycaster>();
+
+            GameObject flash = new("ScreenFlash");
+            flash.transform.SetParent(canvasObject.transform, false);
+            RectTransform flashRect = flash.AddComponent<RectTransform>();
+            flashRect.anchorMin = Vector2.zero;
+            flashRect.anchorMax = Vector2.one;
+            flashRect.offsetMin = Vector2.zero;
+            flashRect.offsetMax = Vector2.zero;
+            Image flashImage = flash.AddComponent<Image>();
+            flashImage.color = Color.clear;
+
+            GameObject feedback = new("GameFeel");
+            feedback.transform.SetParent(canvasObject.transform, false);
+            GameFeelController gameFeelController = feedback.AddComponent<GameFeelController>();
+            AudioSource audioSource = Camera.main != null ? Camera.main.GetComponent<AudioSource>() : null;
+            SerializedObject feelSo = new(gameFeelController);
+            feelSo.FindProperty("screenFlashImage").objectReferenceValue = flashImage;
+            feelSo.FindProperty("audioSource").objectReferenceValue = audioSource;
+            feelSo.ApplyModifiedPropertiesWithoutUndo();
+
+            GameObject viewerShell = new("ViewerShellUI");
+            viewerShell.transform.SetParent(canvasObject.transform, false);
+            ViewerHudPresenter viewerHudPresenter = viewerShell.AddComponent<ViewerHudPresenter>();
+            ViewerStateFeed stateFeed = viewerShell.AddComponent<ViewerStateFeed>();
+            ViewerEconomyPresenter economyPresenter = viewerShell.AddComponent<ViewerEconomyPresenter>();
+            ViewerControlsPresenter controlsPresenter = viewerShell.AddComponent<ViewerControlsPresenter>();
+            ViewerActionHistoryPresenter historyPresenter = viewerShell.AddComponent<ViewerActionHistoryPresenter>();
+            ViewerStorePresenter storePresenter = viewerShell.AddComponent<ViewerStorePresenter>();
+            _ = viewerHudPresenter;
+            _ = controlsPresenter;
+
+            GameObject runProgress = CreateText("RunProgressText", canvasObject.transform, new Vector2(140f, -20f), "Room 1/3");
+            RunProgressPresenter progressPresenter = runProgress.AddComponent<RunProgressPresenter>();
+            SerializedObject progressSo = new(progressPresenter);
+            progressSo.FindProperty("runController").objectReferenceValue = runController;
+            progressSo.FindProperty("progressText").objectReferenceValue = runProgress.GetComponent<TMP_Text>();
+            progressSo.ApplyModifiedPropertiesWithoutUndo();
+
+            GameObject snapshotText = CreateText("SnapshotText", viewerShell.transform, new Vector2(160f, -60f), "Snapshot");
+            GameObject deltaText = CreateText("DeltaText", viewerShell.transform, new Vector2(160f, -180f), "Delta");
+            GameObject actionResultText = CreateText("ActionResultText", viewerShell.transform, new Vector2(160f, -300f), "Action Result");
+            GameObject rawJsonText = CreateText("RawJsonText", viewerShell.transform, new Vector2(540f, -60f), "Raw JSON");
+            GameObject balanceText = CreateText("BalanceText", viewerShell.transform, new Vector2(540f, -260f), "Crowns");
+            GameObject budgetText = CreateText("BudgetText", viewerShell.transform, new Vector2(540f, -290f), "Budget");
+            GameObject controlsText = CreateText("ControlsText", viewerShell.transform, new Vector2(540f, -340f), "Controls");
+            GameObject historyText = CreateText("HistoryText", viewerShell.transform, new Vector2(540f, -420f), "History");
+            GameObject storeHeader = CreateText("StoreHeaderText", viewerShell.transform, new Vector2(860f, -60f), "Viewer Store");
+
+            AssignViewerUiReferences(stateFeed, economyPresenter, historyPresenter, storePresenter,
+                snapshotText, deltaText, actionResultText, rawJsonText, balanceText, budgetText, historyText, storeHeader);
+
+            CreateViewerStoreButtons(viewerShell.transform, storePresenter);
+            CreateCharacterSelectScreen(canvasObject.transform);
+            CreateInventoryPanel(canvasObject.transform);
+            CreateResultScreen(canvasObject.transform);
+        }
+
+        private static void CreateCharacterSelectScreen(Transform canvasRoot)
+        {
+            GameObject root = new("CharacterSelectScreen");
+            root.transform.SetParent(canvasRoot, false);
+            RectTransform rect = root.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = new Vector2(720f, 360f);
+
+            Image background = root.AddComponent<Image>();
+            background.color = new Color(0.05f, 0.07f, 0.1f, 0.92f);
+
+            CharacterSelectPresenter presenter = root.AddComponent<CharacterSelectPresenter>();
+            GameObject title = CreateCenteredText("CharacterSelectTitle", root.transform, new Vector2(0f, -24f), "Choose Your Hero", 30);
+            GameObject description = CreateCenteredText("CharacterSelectDescription", root.transform, new Vector2(0f, -78f), "Pick a class to start the run.", 18);
+
+            SerializedObject presenterSo = new(presenter);
+            presenterSo.FindProperty("root").objectReferenceValue = root;
+            presenterSo.FindProperty("titleText").objectReferenceValue = title.GetComponent<TMP_Text>();
+            presenterSo.FindProperty("descriptionText").objectReferenceValue = description.GetComponent<TMP_Text>();
+            presenterSo.FindProperty("heroButtons").arraySize = 3;
+
+            for (int i = 0; i < 3; i++)
+            {
+                Button heroButton = CreateActionButton($"HeroButton_{i + 1}", root.transform, new Vector2(-180f + i * 180f, -190f), $"Hero {i + 1}");
+                SerializedProperty buttonEntry = presenterSo.FindProperty("heroButtons").GetArrayElementAtIndex(i);
+                buttonEntry.FindPropertyRelative("Button").objectReferenceValue = heroButton;
+                buttonEntry.FindPropertyRelative("Label").objectReferenceValue = heroButton.GetComponentInChildren<TMP_Text>();
+            }
+
+            presenterSo.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static void CreateInventoryPanel(Transform canvasRoot)
+        {
+            GameObject inventoryRoot = new("InventoryPanel");
+            inventoryRoot.transform.SetParent(canvasRoot, false);
+            RectTransform rect = inventoryRoot.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(1f, 1f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(1f, 1f);
+            rect.anchoredPosition = new Vector2(-24f, -24f);
+            rect.sizeDelta = new Vector2(260f, 220f);
+
+            Image background = inventoryRoot.AddComponent<Image>();
+            background.color = new Color(0f, 0f, 0f, 0.65f);
+            Outline outline = inventoryRoot.AddComponent<Outline>();
+            outline.effectColor = new Color(1f, 1f, 1f, 0.16f);
+            outline.effectDistance = new Vector2(2f, -2f);
+
+            InventoryPresenter presenter = inventoryRoot.AddComponent<InventoryPresenter>();
+            GameObject heroText = CreateText("InventoryHeroText", inventoryRoot.transform, new Vector2(12f, -12f), "Hero: None");
+            GameObject equippedText = CreateText("InventoryEquippedText", inventoryRoot.transform, new Vector2(12f, -40f), "Equipped: None");
+            GameObject inventoryText = CreateText("InventoryListText", inventoryRoot.transform, new Vector2(12f, -68f), "Bag");
+            inventoryText.GetComponent<RectTransform>().sizeDelta = new Vector2(236f, 120f);
+            Button previousButton = CreateActionButton("InventoryPrevButton", inventoryRoot.transform, new Vector2(-48f, -188f), "Prev", new Vector2(88f, 34f));
+            Button nextButton = CreateActionButton("InventoryNextButton", inventoryRoot.transform, new Vector2(48f, -188f), "Next", new Vector2(88f, 34f));
+
+            SerializedObject presenterSo = new(presenter);
+            presenterSo.FindProperty("heroText").objectReferenceValue = heroText.GetComponent<TMP_Text>();
+            presenterSo.FindProperty("equippedText").objectReferenceValue = equippedText.GetComponent<TMP_Text>();
+            presenterSo.FindProperty("inventoryText").objectReferenceValue = inventoryText.GetComponent<TMP_Text>();
+            presenterSo.FindProperty("previousWeaponButton").objectReferenceValue = previousButton;
+            presenterSo.FindProperty("nextWeaponButton").objectReferenceValue = nextButton;
+            presenterSo.FindProperty("panelBackground").objectReferenceValue = background;
+            presenterSo.FindProperty("panelOutline").objectReferenceValue = outline;
+            presenterSo.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static GameObject CreateText(string name, Transform parent, Vector2 anchoredPosition, string text)
+        {
+            GameObject textObject = new(name);
+            textObject.transform.SetParent(parent, false);
+            RectTransform rect = textObject.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = anchoredPosition;
+            rect.sizeDelta = new Vector2(320f, 100f);
+
+            TMP_Text tmp = textObject.AddComponent<TextMeshProUGUI>();
+            tmp.text = text;
+            tmp.fontSize = 20;
+            tmp.color = Color.white;
+            return textObject;
+        }
+
+        private static void AssignViewerUiReferences(
+            ViewerStateFeed stateFeed,
+            ViewerEconomyPresenter economyPresenter,
+            ViewerActionHistoryPresenter historyPresenter,
+            ViewerStorePresenter storePresenter,
+            GameObject snapshotText,
+            GameObject deltaText,
+            GameObject actionResultText,
+            GameObject rawJsonText,
+            GameObject balanceText,
+            GameObject budgetText,
+            GameObject historyText,
+            GameObject storeHeader)
+        {
+            SerializedObject stateFeedSo = new(stateFeed);
+            stateFeedSo.FindProperty("snapshotText").objectReferenceValue = snapshotText.GetComponent<TMP_Text>();
+            stateFeedSo.FindProperty("deltaText").objectReferenceValue = deltaText.GetComponent<TMP_Text>();
+            stateFeedSo.FindProperty("actionResultText").objectReferenceValue = actionResultText.GetComponent<TMP_Text>();
+            stateFeedSo.FindProperty("rawJsonText").objectReferenceValue = rawJsonText.GetComponent<TMP_Text>();
+            stateFeedSo.ApplyModifiedPropertiesWithoutUndo();
+
+            SerializedObject economySo = new(economyPresenter);
+            economySo.FindProperty("balanceText").objectReferenceValue = balanceText.GetComponent<TMP_Text>();
+            economySo.FindProperty("budgetText").objectReferenceValue = budgetText.GetComponent<TMP_Text>();
+            economySo.ApplyModifiedPropertiesWithoutUndo();
+
+            SerializedObject historySo = new(historyPresenter);
+            historySo.FindProperty("historyText").objectReferenceValue = historyText.GetComponent<TMP_Text>();
+            historySo.ApplyModifiedPropertiesWithoutUndo();
+
+            SerializedObject storeSo = new(storePresenter);
+            storeSo.FindProperty("headerText").objectReferenceValue = storeHeader.GetComponent<TMP_Text>();
+            storeSo.FindProperty("actionButtons").arraySize = 4;
+            storeSo.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static void CreateViewerStoreButtons(Transform viewerShell, ViewerStorePresenter storePresenter)
+        {
+            SerializedObject storeSo = new(storePresenter);
+            SerializedProperty buttons = storeSo.FindProperty("actionButtons");
+
+            for (int i = 0; i < 4; i++)
+            {
+                GameObject buttonObject = new($"StoreButton_{i + 1}");
+                buttonObject.transform.SetParent(viewerShell, false);
+                RectTransform rect = buttonObject.AddComponent<RectTransform>();
+                rect.anchorMin = new Vector2(0f, 1f);
+                rect.anchorMax = new Vector2(0f, 1f);
+                rect.pivot = new Vector2(0f, 1f);
+                rect.anchoredPosition = new Vector2(860f, -110f - i * 90f);
+                rect.sizeDelta = new Vector2(260f, 72f);
+
+                Image image = buttonObject.AddComponent<Image>();
+                image.color = new Color(0.18f, 0.45f, 0.24f, 1f);
+                buttonObject.AddComponent<Button>();
+                ViewerStoreButton storeButton = buttonObject.AddComponent<ViewerStoreButton>();
+
+                GameObject label = CreateText($"Label_{i + 1}", buttonObject.transform, new Vector2(12f, -8f), "Action");
+                GameObject price = CreateText($"Price_{i + 1}", buttonObject.transform, new Vector2(12f, -34f), "0");
+                GameObject state = CreateText($"State_{i + 1}", buttonObject.transform, new Vector2(140f, -22f), "Ready");
+
+                SerializedObject buttonSo = new(storeButton);
+                buttonSo.FindProperty("labelText").objectReferenceValue = label.GetComponent<TMP_Text>();
+                buttonSo.FindProperty("priceText").objectReferenceValue = price.GetComponent<TMP_Text>();
+                buttonSo.FindProperty("stateText").objectReferenceValue = state.GetComponent<TMP_Text>();
+                buttonSo.FindProperty("background").objectReferenceValue = image;
+                buttonSo.ApplyModifiedPropertiesWithoutUndo();
+
+                buttons.GetArrayElementAtIndex(i).objectReferenceValue = storeButton;
+            }
+
+            storeSo.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static void CreateResultScreen(Transform canvasRoot)
+        {
+            GameObject resultRoot = new("ResultScreen");
+            resultRoot.transform.SetParent(canvasRoot, false);
+            RectTransform rect = resultRoot.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = new Vector2(420f, 220f);
+
+            Image background = resultRoot.AddComponent<Image>();
+            background.color = new Color(0f, 0f, 0f, 0.82f);
+
+            ResultScreenPresenter presenter = resultRoot.AddComponent<ResultScreenPresenter>();
+            ResultScreenButtonsPresenter buttonsPresenter = resultRoot.AddComponent<ResultScreenButtonsPresenter>();
+
+            GameObject title = CreateCenteredText("TitleText", resultRoot.transform, new Vector2(0f, -20f), "Run Result", 32);
+            GameObject summary = CreateCenteredText("SummaryText", resultRoot.transform, new Vector2(0f, -70f), "Summary", 20);
+            Button restartButton = CreateActionButton("RestartButton", resultRoot.transform, new Vector2(-90f, -150f), "Restart");
+            Button hubButton = CreateActionButton("HubButton", resultRoot.transform, new Vector2(90f, -150f), "Hub");
+
+            SerializedObject presenterSo = new(presenter);
+            presenterSo.FindProperty("root").objectReferenceValue = resultRoot;
+            presenterSo.FindProperty("titleText").objectReferenceValue = title.GetComponent<TMP_Text>();
+            presenterSo.FindProperty("summaryText").objectReferenceValue = summary.GetComponent<TMP_Text>();
+            presenterSo.ApplyModifiedPropertiesWithoutUndo();
+
+            SerializedObject buttonsSo = new(buttonsPresenter);
+            buttonsSo.FindProperty("restartButton").objectReferenceValue = restartButton;
+            buttonsSo.FindProperty("hubButton").objectReferenceValue = hubButton;
+            buttonsSo.ApplyModifiedPropertiesWithoutUndo();
+
+            resultRoot.SetActive(false);
+        }
+
+        private static GameObject CreateCenteredText(string name, Transform parent, Vector2 anchoredPosition, string text, float fontSize)
+        {
+            GameObject textObject = new(name);
+            textObject.transform.SetParent(parent, false);
+            RectTransform rect = textObject.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 1f);
+            rect.anchorMax = new Vector2(0.5f, 1f);
+            rect.pivot = new Vector2(0.5f, 1f);
+            rect.anchoredPosition = anchoredPosition;
+            rect.sizeDelta = new Vector2(360f, 40f);
+
+            TMP_Text tmp = textObject.AddComponent<TextMeshProUGUI>();
+            tmp.text = text;
+            tmp.fontSize = fontSize;
+            tmp.alignment = TextAlignmentOptions.Center;
+            tmp.color = Color.white;
+            return textObject;
+        }
+
+        private static Button CreateActionButton(string name, Transform parent, Vector2 anchoredPosition, string label)
+        {
+            return CreateActionButton(name, parent, anchoredPosition, label, new Vector2(140f, 42f));
+        }
+
+        private static Button CreateActionButton(string name, Transform parent, Vector2 anchoredPosition, string label, Vector2 size)
+        {
+            GameObject buttonObject = new(name);
+            buttonObject.transform.SetParent(parent, false);
+            RectTransform rect = buttonObject.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 1f);
+            rect.anchorMax = new Vector2(0.5f, 1f);
+            rect.pivot = new Vector2(0.5f, 1f);
+            rect.anchoredPosition = anchoredPosition;
+            rect.sizeDelta = size;
+
+            Image image = buttonObject.AddComponent<Image>();
+            image.color = new Color(0.2f, 0.2f, 0.2f, 1f);
+            Button button = buttonObject.AddComponent<Button>();
+
+            GameObject labelText = CreateCenteredText($"{name}_Text", buttonObject.transform, new Vector2(0f, 0f), label, 20);
+            RectTransform labelRect = labelText.GetComponent<RectTransform>();
+            labelRect.anchorMin = new Vector2(0.5f, 0.5f);
+            labelRect.anchorMax = new Vector2(0.5f, 0.5f);
+            labelRect.pivot = new Vector2(0.5f, 0.5f);
+            labelRect.anchoredPosition = Vector2.zero;
+            labelRect.sizeDelta = size - new Vector2(20f, 12f);
+
+            return button;
+        }
+
+        private static void AssignSelectionController(CharacterSelectionController selectionController)
+        {
+            HeroRosterDefinition roster = AssetDatabase.LoadAssetAtPath<HeroRosterDefinition>("Assets/Game/ScriptableObjects/Heroes/HeroRoster.asset");
+            CharacterSelectPresenter presenter = Object.FindFirstObjectByType<CharacterSelectPresenter>(FindObjectsInactive.Include);
+
+            SerializedObject so = new(selectionController);
+            so.FindProperty("heroRoster").objectReferenceValue = roster;
+            so.FindProperty("presenter").objectReferenceValue = presenter;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static GameObject LoadDefaultSpumUnitPrefab()
+        {
+            GameObject unitPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Resources/SPUM/SPUM_Units/Unit0.prefab");
+            if (unitPrefab != null)
+            {
+                return unitPrefab;
+            }
+
+            return AssetDatabase.LoadAssetAtPath<GameObject>("Assets/SPUM/Prefab/UnitSave.prefab");
+        }
+
+        private static void AddSceneToBuildSettings(string scenePath)
+        {
+            const string hubScenePath = "Assets/Game/Scenes/Hub.unity";
+            const string runScenePath = "Assets/Game/Scenes/Run_Prototype.unity";
+            var orderedScenes = new System.Collections.Generic.List<EditorBuildSettingsScene>();
+            if (System.IO.File.Exists(hubScenePath))
+            {
+                orderedScenes.Add(new EditorBuildSettingsScene(hubScenePath, true));
+            }
+
+            if (System.IO.File.Exists(runScenePath))
+            {
+                orderedScenes.Add(new EditorBuildSettingsScene(runScenePath, true));
+            }
+
+            if (!orderedScenes.Exists(scene => scene.path == scenePath))
+            {
+                orderedScenes.Add(new EditorBuildSettingsScene(scenePath, true));
+            }
+
+            EditorBuildSettings.scenes = orderedScenes.ToArray();
+        }
+    }
+}
+#endif

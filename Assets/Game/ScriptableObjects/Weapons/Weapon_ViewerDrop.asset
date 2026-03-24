@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f0c22ac2dee1664418fd15253d24852a, type: 3}
+  m_Name: Weapon_ViewerDrop
+  m_EditorClassIdentifier: Assembly-CSharp::SoulForge.Data.WeaponDefinition
+  <WeaponId>k__BackingField: weapon_viewer_drop
+  <DisplayName>k__BackingField: Arc Staff
+  <Description>k__BackingField: Viewer-funded energy weapon.
+  <Rarity>k__BackingField: 2
+  <MinRoomTier>k__BackingField: 2
+  <MaxRoomTier>k__BackingField: 2
+  <ShopPrice>k__BackingField: 65
+  <ChestWeight>k__BackingField: 4
+  <AccentColor>k__BackingField: {r: 0.98, g: 0.58, b: 1, a: 1}
+  <Damage>k__BackingField: 1.5
+  <FireRate>k__BackingField: 2.5
+  <ProjectileSpeed>k__BackingField: 13

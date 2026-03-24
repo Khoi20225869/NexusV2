@@ -1,0 +1,18 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d57f994bb2ee5e94980aee56b78695e8, type: 3}
+  m_Name: HeroRoster
+  m_EditorClassIdentifier: Assembly-CSharp::SoulForge.Data.HeroRosterDefinition
+  <Heroes>k__BackingField:
+  - {fileID: 11400000, guid: c3769dc9f37d82a40954383b2d0e30e6, type: 2}
+  - {fileID: 11400000, guid: dd037cc4e36d3bd43b6d7d613075c52c, type: 2}
+  - {fileID: 11400000, guid: 3e166bc53569a464a853a2da8e33203b, type: 2}
