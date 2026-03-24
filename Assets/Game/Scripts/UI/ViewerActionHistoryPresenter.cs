@@ -8,6 +8,7 @@ namespace SoulForge.UI
     public sealed class ViewerActionHistoryPresenter : MonoBehaviour
     {
         [SerializeField] private StateBroadcaster stateBroadcaster;
+        [SerializeField] private ViewerWebSocketClient remoteViewerClient;
         [SerializeField] private TMP_Text historyText;
         [SerializeField] private int maxEntries = 6;
 
@@ -18,6 +19,11 @@ namespace SoulForge.UI
             if (stateBroadcaster == null)
             {
                 stateBroadcaster = FindFirstObjectByType<StateBroadcaster>();
+            }
+
+            if (remoteViewerClient == null)
+            {
+                remoteViewerClient = FindFirstObjectByType<ViewerWebSocketClient>();
             }
         }
 
@@ -43,7 +49,9 @@ namespace SoulForge.UI
 
         private void AppendEntry(ViewerActionResult result)
         {
-            string line = $"{result.ActionId} | {(result.Success ? "OK" : "FAIL")} | {result.Reason}";
+            bool isLocalViewer = remoteViewerClient != null && string.Equals(result.ViewerId, remoteViewerClient.ViewerId);
+            string owner = string.IsNullOrWhiteSpace(result.ViewerId) ? "SYSTEM" : isLocalViewer ? "YOU" : result.ViewerId;
+            string line = $"[{System.DateTime.Now:HH:mm:ss}] {owner} | {result.ActionId} | {(result.Success ? "OK" : "FAIL")} | {result.Reason}";
             entries.Enqueue(line);
 
             while (entries.Count > maxEntries)

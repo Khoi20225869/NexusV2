@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
-using System.Net.WebSockets;
+using System.IO;
+using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,6 +11,12 @@ namespace SoulForge.Viewer
 {
     public sealed class ViewerWebSocketClient : MonoBehaviour
     {
+        private static readonly UTF8Encoding Utf8NoBom = new(false);
+        private const string ViewerIdPrefsKey = "SoulForge.ViewerId";
+        private const string HostIpPrefsKey = "SoulForge.LastHostIp";
+        private const string SessionCodePrefsKey = "SoulForge.LastSessionCode";
+        private const string RecentSessionsPrefsKey = "SoulForge.RecentSessions";
+
         [Serializable]
         private sealed class JoinRequest
         {
@@ -28,23 +35,43 @@ namespace SoulForge.Viewer
 
         [SerializeField] private string hostIp = "127.0.0.1";
         [SerializeField] private int port = 8080;
-        [SerializeField] private string route = "ws";
         [SerializeField] private string viewerId = "viewer_01";
         [SerializeField] private string sessionId = "local-session";
         [SerializeField] private bool autoConnect = true;
         [SerializeField] private StateBroadcaster stateBroadcaster;
 
         private readonly ConcurrentQueue<string> incomingMessages = new();
-        private ClientWebSocket socket;
+        private TcpClient tcpClient;
+        private StreamReader reader;
+        private StreamWriter writer;
         private CancellationTokenSource cancellation;
         private int commandCounter;
+        private string lastStatus = "Offline";
+        private bool isDisconnecting;
+        private string lastSuccessfulSession;
 
         public string ViewerId => viewerId;
-        public bool IsConnected => socket != null && socket.State == WebSocketState.Open;
-        public string Url => $"ws://{hostIp}:{port}/{route.Trim('/')}/";
+        public bool IsConnected => tcpClient != null && tcpClient.Connected;
+        public string HostIp => hostIp;
+        public string SessionCode => sessionId;
+        public string LastStatus => lastStatus;
+        public string Url => $"tcp://{hostIp}:{port}";
+        public string LastSuccessfulSession => lastSuccessfulSession;
+
+        public event Action<bool> ConnectionStateChanged;
+        public event Action<string> StatusChanged;
 
         private void Awake()
         {
+            if (string.IsNullOrWhiteSpace(viewerId) || viewerId == "viewer_01")
+            {
+                viewerId = GetOrCreateViewerId();
+            }
+
+            hostIp = PlayerPrefs.GetString(HostIpPrefsKey, hostIp);
+            sessionId = PlayerPrefs.GetString(SessionCodePrefsKey, sessionId);
+            lastSuccessfulSession = BuildSessionLabel(hostIp, sessionId);
+
             if (stateBroadcaster == null)
             {
                 stateBroadcaster = FindFirstObjectByType<StateBroadcaster>();
@@ -80,52 +107,113 @@ namespace SoulForge.Viewer
                 return;
             }
 
+            SetStatus($"Connecting to {Url}");
             cancellation = new CancellationTokenSource();
-            socket = new ClientWebSocket();
+            tcpClient = new TcpClient();
 
             try
             {
-                await socket.ConnectAsync(new Uri(Url), cancellation.Token);
-                Debug.Log($"Viewer websocket connected to {Url}");
+                await tcpClient.ConnectAsync(hostIp, port);
+                NetworkStream stream = tcpClient.GetStream();
+                tcpClient.NoDelay = true;
+                reader = new StreamReader(stream, Utf8NoBom);
+                writer = new StreamWriter(stream, Utf8NoBom) { AutoFlush = true };
+                Debug.Log($"Viewer TCP connected to {Url}");
+                SetStatus($"Connected to {Url}");
+                ConnectionStateChanged?.Invoke(true);
                 SendJoin();
                 _ = ReceiveLoopAsync(cancellation.Token);
             }
             catch (Exception exception)
             {
-                Debug.LogError($"Viewer websocket connect failed to {Url}: {exception.Message}. Check host Play mode, host IP, port, and firewall.");
+                string message = $"Viewer TCP connect failed to {Url}: {exception.Message}. Check host Play mode, host IP, port, and firewall.";
+                Debug.LogError(message);
+                SetStatus($"Offline: {exception.Message}");
+                ConnectionStateChanged?.Invoke(false);
                 Disconnect();
             }
         }
 
         [ContextMenu("Disconnect")]
-        public async void Disconnect()
+        public void Disconnect()
         {
-            cancellation?.Cancel();
-
-            if (socket == null)
+            if (isDisconnecting)
             {
-                cancellation?.Dispose();
-                cancellation = null;
                 return;
             }
 
-            try
+            isDisconnecting = true;
+            cancellation?.Cancel();
+
+            try { writer?.Dispose(); } catch { }
+            try { reader?.Dispose(); } catch { }
+            try { tcpClient?.Close(); tcpClient?.Dispose(); } catch { }
+
+            writer = null;
+            reader = null;
+            tcpClient = null;
+            cancellation?.Dispose();
+            cancellation = null;
+            SetStatus("Offline");
+            ConnectionStateChanged?.Invoke(false);
+            isDisconnecting = false;
+        }
+
+        public void SetHostIp(string nextHostIp)
+        {
+            if (string.IsNullOrWhiteSpace(nextHostIp))
             {
-                if (socket.State == WebSocketState.Open || socket.State == WebSocketState.CloseReceived)
+                return;
+            }
+
+            hostIp = nextHostIp.Trim();
+            PlayerPrefs.SetString(HostIpPrefsKey, hostIp);
+            SetStatus($"Host IP set to {hostIp}");
+        }
+
+        public void SetSessionCode(string nextSessionCode)
+        {
+            if (string.IsNullOrWhiteSpace(nextSessionCode))
+            {
+                return;
+            }
+
+            sessionId = nextSessionCode.Trim().ToUpperInvariant();
+            PlayerPrefs.SetString(SessionCodePrefsKey, sessionId);
+            SetStatus($"Session set to {sessionId}");
+        }
+
+        public void ReconnectLast()
+        {
+            if (string.IsNullOrWhiteSpace(hostIp) || string.IsNullOrWhiteSpace(sessionId))
+            {
+                SetStatus("No recent session");
+                return;
+            }
+
+            Disconnect();
+            Connect();
+        }
+
+        public string GetRecentSessionsDisplay()
+        {
+            string raw = PlayerPrefs.GetString(RecentSessionsPrefsKey, string.Empty);
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return "Recent Sessions\nNone yet";
+            }
+
+            string[] sessions = raw.Split('\n');
+            StringBuilder builder = new("Recent Sessions\n");
+            for (int i = 0; i < sessions.Length; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(sessions[i]))
                 {
-                    await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "disconnect", CancellationToken.None);
+                    builder.Append(i + 1).Append(". ").Append(sessions[i]).Append('\n');
                 }
             }
-            catch
-            {
-            }
-            finally
-            {
-                socket.Dispose();
-                socket = null;
-                cancellation?.Dispose();
-                cancellation = null;
-            }
+
+            return builder.ToString().TrimEnd();
         }
 
         public void SubmitAction(string actionId, string targetId = "")
@@ -160,54 +248,49 @@ namespace SoulForge.Viewer
 
         private async void SendRaw(string message)
         {
-            if (!IsConnected)
+            if (!IsConnected || writer == null)
             {
                 return;
             }
 
-            byte[] bytes = Encoding.UTF8.GetBytes(message);
-
             try
             {
-                await socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
+                await writer.WriteLineAsync(message);
             }
             catch (Exception exception)
             {
-                Debug.LogWarning($"Viewer websocket send failed: {exception.Message}");
+                if (!isDisconnecting)
+                {
+                    Debug.LogWarning($"Viewer TCP send failed: {exception.Message}");
+                }
+
                 Disconnect();
             }
         }
 
         private async Task ReceiveLoopAsync(CancellationToken token)
         {
-            byte[] buffer = new byte[4096];
-
             try
             {
-                while (!token.IsCancellationRequested && socket != null && socket.State == WebSocketState.Open)
+                while (!token.IsCancellationRequested && reader != null)
                 {
-                    StringBuilder builder = new();
-                    WebSocketReceiveResult result;
-
-                    do
+                    string message = await reader.ReadLineAsync();
+                    if (string.IsNullOrWhiteSpace(message))
                     {
-                        result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), token);
-                        if (result.MessageType == WebSocketMessageType.Close)
-                        {
-                            Disconnect();
-                            return;
-                        }
-
-                        builder.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
+                        Debug.Log("Viewer TCP server closed the stream.");
+                        Disconnect();
+                        return;
                     }
-                    while (!result.EndOfMessage);
 
-                    incomingMessages.Enqueue(builder.ToString());
+                    incomingMessages.Enqueue(message);
                 }
             }
             catch (Exception exception)
             {
-                Debug.LogWarning($"Viewer websocket receive failed: {exception.Message}");
+                if (!isDisconnecting && !token.IsCancellationRequested)
+                {
+                    Debug.LogWarning($"Viewer TCP receive failed: {exception.Message}");
+                }
             }
         }
 
@@ -226,11 +309,14 @@ namespace SoulForge.Viewer
 
             string type = message[..separatorIndex];
             string payload = message[(separatorIndex + 1)..];
+            type = type.TrimStart('\uFEFF');
 
             switch (type)
             {
                 case "snapshot":
-                    stateBroadcaster?.BroadcastSnapshot(JsonUtility.FromJson<ViewerSessionSnapshot>(payload));
+                    ViewerSessionSnapshot snapshot = JsonUtility.FromJson<ViewerSessionSnapshot>(payload);
+                    stateBroadcaster?.BroadcastSnapshot(snapshot);
+                    SetStatus($"Connected to {hostIp}");
                     break;
                 case "delta":
                     stateBroadcaster?.BroadcastDelta(JsonUtility.FromJson<ViewerSessionDelta>(payload));
@@ -240,8 +326,66 @@ namespace SoulForge.Viewer
                     break;
                 case "notice":
                     Debug.Log($"Viewer notice: {payload}");
+                    if (payload == "joined")
+                    {
+                        RememberSuccessfulSession();
+                    }
+                    SetStatus(payload);
                     break;
             }
+        }
+
+        private void SetStatus(string status)
+        {
+            lastStatus = status;
+            StatusChanged?.Invoke(lastStatus);
+        }
+
+        private static string GetOrCreateViewerId()
+        {
+            string saved = PlayerPrefs.GetString(ViewerIdPrefsKey, string.Empty);
+            if (!string.IsNullOrWhiteSpace(saved))
+            {
+                return saved;
+            }
+
+            string generated = $"viewer_{UnityEngine.Random.Range(1000, 9999)}";
+            PlayerPrefs.SetString(ViewerIdPrefsKey, generated);
+            PlayerPrefs.Save();
+            return generated;
+        }
+
+        private void RememberSuccessfulSession()
+        {
+            PlayerPrefs.SetString(HostIpPrefsKey, hostIp);
+            PlayerPrefs.SetString(SessionCodePrefsKey, sessionId);
+
+            string entry = BuildSessionLabel(hostIp, sessionId);
+            lastSuccessfulSession = entry;
+            string[] previous = PlayerPrefs.GetString(RecentSessionsPrefsKey, string.Empty).Split('\n');
+            StringBuilder builder = new();
+            builder.AppendLine(entry);
+
+            int added = 1;
+            for (int i = 0; i < previous.Length && added < 5; i++)
+            {
+                string existing = previous[i].Trim();
+                if (string.IsNullOrWhiteSpace(existing) || string.Equals(existing, entry, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                builder.AppendLine(existing);
+                added++;
+            }
+
+            PlayerPrefs.SetString(RecentSessionsPrefsKey, builder.ToString().TrimEnd());
+            PlayerPrefs.Save();
+        }
+
+        private static string BuildSessionLabel(string ip, string code)
+        {
+            return $"{ip}  [{code}]";
         }
     }
 }

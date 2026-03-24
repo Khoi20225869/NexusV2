@@ -13,9 +13,12 @@ MonoBehaviour:
   m_Name: ViewerAction_SpawnElite
   m_EditorClassIdentifier: Assembly-CSharp::SoulForge.Data.ViewerActionDefinition
   <ActionId>k__BackingField: spawn_elite_enemy
+  <DisplayName>k__BackingField: Summon Elite
+  <Description>k__BackingField: Drop a dangerous elite into the fight.
   <Category>k__BackingField: 0
-  <Price>k__BackingField: 120
-  <Cooldown>k__BackingField: 20
-  <BudgetCost>k__BackingField: 4
+  <Price>k__BackingField: 75
+  <Cooldown>k__BackingField: 12
+  <BudgetCost>k__BackingField: 3
   <TargetId>k__BackingField: elite_spawn
   <HealAmount>k__BackingField: 0
+  <AccentColor>k__BackingField: {r: 0.92, g: 0.54, b: 0.16, a: 1}

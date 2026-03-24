@@ -1309,7 +1309,6 @@ public class SPUM_Manager : MonoBehaviour
     
     public void InstallSpriteData()
     {
-        bool Chk = false;
         if(Directory.Exists("Assets/Resources/SPUM/SPUM_Sprites/Items"))
         {
             Debug.Log("Found Resources Folder Success!!");
@@ -1327,7 +1326,6 @@ public class SPUM_Manager : MonoBehaviour
 
         if(AssetDatabase.CopyAsset("Assets/SPUM/SPUM_Sprites/Items","Assets/Resources/SPUM/SPUM_Sprites/Items"))
         {
-            Chk = true;
             Debug.Log("Install SPUM Sprtie Data Success in Resources Folder");
 
             if(!Directory.Exists("Assets/Resources/SPUM/SPUM_UNITS"))

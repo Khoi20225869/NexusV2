@@ -13,9 +13,12 @@ MonoBehaviour:
   m_Name: ViewerAction_DropHeal
   m_EditorClassIdentifier: Assembly-CSharp::SoulForge.Data.ViewerActionDefinition
   <ActionId>k__BackingField: drop_heal
+  <DisplayName>k__BackingField: Emergency Heal
+  <Description>k__BackingField: Restore a small chunk of host HP.
   <Category>k__BackingField: 1
-  <Price>k__BackingField: 40
-  <Cooldown>k__BackingField: 10
+  <Price>k__BackingField: 30
+  <Cooldown>k__BackingField: 8
   <BudgetCost>k__BackingField: 1
   <TargetId>k__BackingField: 
-  <HealAmount>k__BackingField: 1
+  <HealAmount>k__BackingField: 2
+  <AccentColor>k__BackingField: {r: 0.26, g: 0.74, b: 0.42, a: 1}

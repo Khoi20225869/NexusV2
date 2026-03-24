@@ -13,6 +13,7 @@ namespace SoulForge.UI
         [SerializeField] private TMP_Text labelText;
         [SerializeField] private TMP_Text priceText;
         [SerializeField] private TMP_Text stateText;
+        [SerializeField] private TMP_Text descriptionText;
         [SerializeField] private Image background;
         [SerializeField] private Color availableColor = new(0.18f, 0.45f, 0.24f, 1f);
         [SerializeField] private Color unavailableColor = new(0.33f, 0.18f, 0.18f, 1f);
@@ -64,12 +65,22 @@ namespace SoulForge.UI
 
             if (labelText != null)
             {
-                labelText.text = action != null ? action.ActionId : "missing_action";
+                labelText.text = action != null && !string.IsNullOrWhiteSpace(action.DisplayName) ? action.DisplayName : action != null ? action.ActionId : "missing_action";
             }
 
             if (priceText != null)
             {
-                priceText.text = action != null ? $"{action.Price}" : "-";
+                priceText.text = action != null ? $"{action.Price} C" : "-";
+            }
+
+            if (descriptionText != null)
+            {
+                descriptionText.text = action != null ? action.Description : string.Empty;
+            }
+
+            if (background != null && action != null)
+            {
+                background.color = action.AccentColor;
             }
 
             RefreshState();
@@ -105,7 +116,7 @@ namespace SoulForge.UI
 
                 if (background != null)
                 {
-                    background.color = ready ? availableColor : unavailableColor;
+                    background.color = ready ? Color.Lerp(actionDefinition.AccentColor, availableColor, 0.55f) : unavailableColor;
                 }
 
                 if (stateText != null)
@@ -128,7 +139,7 @@ namespace SoulForge.UI
 
             if (background != null)
             {
-                background.color = canPurchase ? availableColor : unavailableColor;
+                background.color = canPurchase ? Color.Lerp(actionDefinition.AccentColor, availableColor, 0.55f) : unavailableColor;
             }
 
             if (stateText == null)

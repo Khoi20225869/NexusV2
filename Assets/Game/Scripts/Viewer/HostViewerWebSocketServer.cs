@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
-using System.Net.WebSockets;
+using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,6 +18,7 @@ namespace SoulForge.Viewer
     public sealed class HostViewerWebSocketServer : MonoBehaviour
     {
         private static HostViewerWebSocketServer instance;
+        private static readonly UTF8Encoding Utf8NoBom = new(false);
 
         [Serializable]
         private sealed class JoinRequest
@@ -37,12 +39,14 @@ namespace SoulForge.Viewer
         private sealed class ClientConnection
         {
             public string ViewerId;
-            public WebSocket Socket;
+            public TcpClient Client;
+            public StreamReader Reader;
+            public StreamWriter Writer;
+            public readonly object WriteLock = new();
         }
 
         [SerializeField] private int port = 8080;
-        [SerializeField] private string route = "ws";
-        [SerializeField] private string listenPrefix = "http://+:8080/ws/";
+        [SerializeField] private string listenPrefix = "tcp://0.0.0.0:8080";
         [SerializeField] private ViewerSessionService sessionService;
         [SerializeField] private StateBroadcaster stateBroadcaster;
         [SerializeField] private ViewerActionExecutor actionExecutor;
@@ -57,7 +61,7 @@ namespace SoulForge.Viewer
         private readonly object clientsLock = new();
 
         private CancellationTokenSource cancellation;
-        private HttpListener listener;
+        private TcpListener listener;
 
         public static HostViewerWebSocketServer Instance => instance;
         public string ListenPrefix => listenPrefix;
@@ -113,25 +117,24 @@ namespace SoulForge.Viewer
                 return;
             }
 
-            if (string.IsNullOrWhiteSpace(listenPrefix))
-            {
-                listenPrefix = $"http://+:{port}/{route.Trim('/')}/";
-            }
-
             cancellation = new CancellationTokenSource();
-            listener = new HttpListener();
-            listener.Prefixes.Add(listenPrefix);
+            listener = new TcpListener(IPAddress.Any, port);
 
             try
             {
                 listener.Start();
+                listenPrefix = $"tcp://0.0.0.0:{port}";
                 _ = AcceptLoopAsync(cancellation.Token);
-                Debug.Log($"Host viewer websocket server listening on {listenPrefix}");
+                Debug.Log($"Host viewer TCP server listening on {listenPrefix}");
+                if (sessionService != null)
+                {
+                    Debug.Log($"Host session code: {sessionService.SessionId}");
+                }
             }
             catch (Exception exception)
             {
-                Debug.LogError($"Failed to start host websocket server on {listenPrefix}: {exception.Message}");
-                listener.Close();
+                Debug.LogError($"Failed to start host TCP server on port {port}: {exception.Message}");
+                listener.Stop();
                 listener = null;
                 cancellation.Dispose();
                 cancellation = null;
@@ -159,7 +162,6 @@ namespace SoulForge.Viewer
             }
 
             listener.Stop();
-            listener.Close();
             listener = null;
             cancellation?.Dispose();
             cancellation = null;
@@ -213,75 +215,67 @@ namespace SoulForge.Viewer
 
         private async Task AcceptLoopAsync(CancellationToken token)
         {
-            while (!token.IsCancellationRequested && listener != null && listener.IsListening)
+            while (!token.IsCancellationRequested && listener != null)
             {
-                HttpListenerContext context;
+                TcpClient tcpClient;
                 try
                 {
-                    context = await listener.GetContextAsync();
+                    tcpClient = await listener.AcceptTcpClientAsync();
                 }
                 catch
                 {
                     break;
                 }
 
-                if (!context.Request.IsWebSocketRequest)
-                {
-                    context.Response.StatusCode = 400;
-                    context.Response.Close();
-                    continue;
-                }
-
                 try
                 {
-                    HttpListenerWebSocketContext webSocketContext = await context.AcceptWebSocketAsync(null);
-                    ClientConnection client = new() { Socket = webSocketContext.WebSocket };
+                    NetworkStream stream = tcpClient.GetStream();
+                    ClientConnection client = new()
+                    {
+                        Client = tcpClient,
+                        Reader = new StreamReader(stream, Utf8NoBom),
+                        Writer = new StreamWriter(stream, Utf8NoBom) { AutoFlush = true }
+                    };
+                    client.Client.NoDelay = true;
 
                     lock (clientsLock)
                     {
                         clients.Add(client);
                     }
 
+                    Debug.Log($"Viewer TCP client accepted: {client.Client.Client.RemoteEndPoint}");
                     _ = ReceiveLoopAsync(client, token);
                 }
                 catch (Exception exception)
                 {
-                    Debug.LogWarning($"Failed to accept websocket client: {exception.Message}");
+                    Debug.LogWarning($"Failed to accept TCP client: {exception.Message}");
+                    tcpClient.Dispose();
                 }
             }
         }
 
         private async Task ReceiveLoopAsync(ClientConnection client, CancellationToken token)
         {
-            byte[] buffer = new byte[4096];
-
             try
             {
-                while (!token.IsCancellationRequested && client.Socket != null && client.Socket.State == WebSocketState.Open)
+                while (!token.IsCancellationRequested && client.Reader != null)
                 {
-                    StringBuilder builder = new();
-                    WebSocketReceiveResult result;
-
-                    do
+                    string message = await client.Reader.ReadLineAsync();
+                    if (string.IsNullOrWhiteSpace(message))
                     {
-                        result = await client.Socket.ReceiveAsync(new ArraySegment<byte>(buffer), token);
-                        if (result.MessageType == WebSocketMessageType.Close)
-                        {
-                            await CloseClientAsync(client);
-                            return;
-                        }
-
-                        builder.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
+                        Debug.Log($"Viewer TCP client closed stream: {client.ViewerId}");
+                        break;
                     }
-                    while (!result.EndOfMessage);
 
-                    string message = builder.ToString();
                     mainThreadActions.Enqueue(() => ProcessIncoming(client, message));
                 }
             }
             catch (Exception exception)
             {
-                Debug.LogWarning($"Viewer client disconnected: {exception.Message}");
+                if (!token.IsCancellationRequested && client != null && client.Client != null && client.Client.Connected)
+                {
+                    Debug.LogWarning($"Viewer TCP client disconnected: {exception.Message}");
+                }
             }
             finally
             {
@@ -291,11 +285,6 @@ namespace SoulForge.Viewer
 
         private void ProcessIncoming(ClientConnection client, string message)
         {
-            if (string.IsNullOrWhiteSpace(message))
-            {
-                return;
-            }
-
             int separatorIndex = message.IndexOf('|');
             if (separatorIndex <= 0)
             {
@@ -304,6 +293,7 @@ namespace SoulForge.Viewer
 
             string type = message[..separatorIndex];
             string payload = message[(separatorIndex + 1)..];
+            type = type.TrimStart('\uFEFF');
 
             switch (type)
             {
@@ -315,10 +305,20 @@ namespace SoulForge.Viewer
                         return;
                     }
 
+                    if (sessionService != null &&
+                        !string.IsNullOrWhiteSpace(sessionService.SessionId) &&
+                        !string.Equals(request.SessionId, sessionService.SessionId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        SendAsync(client, "notice|invalid_session");
+                        _ = CloseClientAsync(client);
+                        return;
+                    }
+
                     client.ViewerId = request.ViewerId;
+                    Debug.Log($"Viewer TCP join accepted: {client.ViewerId}");
                     economyService?.GrantJoinReward(request.ViewerId);
                     SendAsync(client, "notice|joined");
-                    SendAsync(client, $"snapshot|{JsonUtility.ToJson(BuildSnapshot())}");
+                    SendAsync(client, $"snapshot|{JsonUtility.ToJson(BuildSnapshot(client.ViewerId))}");
                     break;
                 }
                 case "command":
@@ -336,29 +336,65 @@ namespace SoulForge.Viewer
             }
         }
 
-        private ViewerSessionSnapshot BuildSnapshot()
+        private ViewerSessionSnapshot BuildSnapshot(string viewerId = "")
         {
             return new ViewerSessionSnapshot
             {
                 SessionId = sessionService != null ? sessionService.SessionId : "local-session",
+                ViewerId = viewerId,
                 RoomIndex = runController != null ? runController.RoomIndex : 0,
                 RoomPhase = runController != null && runController.CurrentRoom != null && runController.CurrentRoom.IsLocked ? "combat" : "reward",
                 HostHp = playerHealth != null ? playerHealth.CurrentHealth : 0f,
                 HostShield = playerHealth != null ? playerHealth.MaxShield : 0f,
                 AliveEnemyCount = runController != null && runController.CurrentRoom != null ? runController.CurrentRoom.ActiveEnemyCount : 0,
                 QueueCount = viewerActionQueue != null ? viewerActionQueue.Count : 0,
-                RoomBudget = roomBudgetService != null ? roomBudgetService.CurrentBudget : 0
+                RoomBudget = roomBudgetService != null ? roomBudgetService.CurrentBudget : 0,
+                ViewerBalance = economyService != null && !string.IsNullOrWhiteSpace(viewerId) ? economyService.GetBalance(viewerId) : 0
             };
         }
 
         private void BroadcastSnapshot(ViewerSessionSnapshot snapshot)
         {
-            BroadcastToAll($"snapshot|{JsonUtility.ToJson(snapshot)}");
+            List<ClientConnection> snapshotClients = SnapshotClients();
+            for (int i = 0; i < snapshotClients.Count; i++)
+            {
+                ClientConnection client = snapshotClients[i];
+                ViewerSessionSnapshot perViewerSnapshot = new()
+                {
+                    SessionId = snapshot.SessionId,
+                    ViewerId = client.ViewerId,
+                    RoomIndex = snapshot.RoomIndex,
+                    RoomPhase = snapshot.RoomPhase,
+                    HostHp = snapshot.HostHp,
+                    HostShield = snapshot.HostShield,
+                    AliveEnemyCount = snapshot.AliveEnemyCount,
+                    QueueCount = snapshot.QueueCount,
+                    RoomBudget = snapshot.RoomBudget,
+                    ViewerBalance = economyService != null && !string.IsNullOrWhiteSpace(client.ViewerId) ? economyService.GetBalance(client.ViewerId) : 0
+                };
+                SendAsync(client, $"snapshot|{JsonUtility.ToJson(perViewerSnapshot)}");
+            }
         }
 
         private void BroadcastDelta(ViewerSessionDelta delta)
         {
-            BroadcastToAll($"delta|{JsonUtility.ToJson(delta)}");
+            List<ClientConnection> snapshotClients = SnapshotClients();
+            for (int i = 0; i < snapshotClients.Count; i++)
+            {
+                ClientConnection client = snapshotClients[i];
+                ViewerSessionDelta perViewerDelta = new()
+                {
+                    EventType = delta.EventType,
+                    ViewerId = client.ViewerId,
+                    RoomPhase = delta.RoomPhase,
+                    HostHp = delta.HostHp,
+                    AliveEnemyCount = delta.AliveEnemyCount,
+                    QueueCount = delta.QueueCount,
+                    RoomBudget = delta.RoomBudget,
+                    ViewerBalance = economyService != null && !string.IsNullOrWhiteSpace(client.ViewerId) ? economyService.GetBalance(client.ViewerId) : 0
+                };
+                SendAsync(client, $"delta|{JsonUtility.ToJson(perViewerDelta)}");
+            }
         }
 
         private void BroadcastResult(ViewerActionResult result)
@@ -368,42 +404,48 @@ namespace SoulForge.Viewer
 
         private void BroadcastToAll(string message)
         {
-            List<ClientConnection> snapshot;
-            lock (clientsLock)
-            {
-                snapshot = new List<ClientConnection>(clients);
-            }
-
+            List<ClientConnection> snapshot = SnapshotClients();
             for (int i = 0; i < snapshot.Count; i++)
             {
                 SendAsync(snapshot[i], message);
             }
         }
 
-        private async void SendAsync(ClientConnection client, string message)
+        private List<ClientConnection> SnapshotClients()
         {
-            if (client == null || client.Socket == null || client.Socket.State != WebSocketState.Open)
+            lock (clientsLock)
             {
-                return;
-            }
-
-            byte[] bytes = Encoding.UTF8.GetBytes(message);
-
-            try
-            {
-                await client.Socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
-            }
-            catch
-            {
-                await CloseClientAsync(client);
+                return new List<ClientConnection>(clients);
             }
         }
 
-        private async Task CloseClientAsync(ClientConnection client)
+        private void SendAsync(ClientConnection client, string message)
+        {
+            if (client == null || client.Writer == null)
+            {
+                return;
+            }
+
+            try
+            {
+                lock (client.WriteLock)
+                {
+                    client.Writer.WriteLine(message);
+                    client.Writer.Flush();
+                }
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning($"Host TCP send failed for {client.ViewerId}: {exception.Message}");
+                _ = CloseClientAsync(client);
+            }
+        }
+
+        private Task CloseClientAsync(ClientConnection client)
         {
             if (client == null)
             {
-                return;
+                return Task.CompletedTask;
             }
 
             lock (clientsLock)
@@ -411,25 +453,10 @@ namespace SoulForge.Viewer
                 clients.Remove(client);
             }
 
-            if (client.Socket == null)
-            {
-                return;
-            }
-
-            try
-            {
-                if (client.Socket.State == WebSocketState.Open || client.Socket.State == WebSocketState.CloseReceived)
-                {
-                    await client.Socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "closing", CancellationToken.None);
-                }
-            }
-            catch
-            {
-            }
-            finally
-            {
-                client.Socket.Dispose();
-            }
+            try { client.Writer?.Dispose(); } catch { }
+            try { client.Reader?.Dispose(); } catch { }
+            try { client.Client?.Close(); client.Client?.Dispose(); } catch { }
+            return Task.CompletedTask;
         }
     }
 }

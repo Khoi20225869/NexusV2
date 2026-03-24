@@ -89,27 +89,27 @@ namespace SoulForge.Viewer
             ViewerCommandValidationResult validation = validator.Validate(command);
             if (!validation.IsValid)
             {
-                BroadcastResult(command.CommandId, false, validation.Reason, command.ActionId);
+                BroadcastResult(command.CommandId, command.ViewerId, false, validation.Reason, command.ActionId);
                 return false;
             }
 
             ViewerActionDefinition action = validator.FindAction(command.ActionId);
             if (action == null)
             {
-                BroadcastResult(command.CommandId, false, "action_disabled", command.ActionId);
+                BroadcastResult(command.CommandId, command.ViewerId, false, "action_disabled", command.ActionId);
                 return false;
             }
 
             if (!economyService.TrySpend(command.ViewerId, action.Price))
             {
-                BroadcastResult(command.CommandId, false, "insufficient_currency", command.ActionId);
+                BroadcastResult(command.CommandId, command.ViewerId, false, "insufficient_currency", command.ActionId);
                 return false;
             }
 
             if (!queue.TryEnqueue(command))
             {
                 economyService.AddCurrency(command.ViewerId, action.Price);
-                BroadcastResult(command.CommandId, false, "queue_full", command.ActionId);
+                BroadcastResult(command.CommandId, command.ViewerId, false, "queue_full", command.ActionId);
                 return false;
             }
 
@@ -127,7 +127,7 @@ namespace SoulForge.Viewer
                 case "spawn_weak_enemy":
                 case "spawn_elite_enemy":
                     bool spawned = enemySpawner != null && action != null && enemySpawner.SpawnById(action.TargetId);
-                    BroadcastResult(command.CommandId, spawned, spawned ? "ok" : "spawn_failed", command.ActionId);
+                    BroadcastResult(command.CommandId, command.ViewerId, spawned, spawned ? "ok" : "spawn_failed", command.ActionId);
                     BroadcastDelta("action_resolved");
                     break;
 
@@ -137,7 +137,7 @@ namespace SoulForge.Viewer
                         playerHealth.Restore(action.HealAmount);
                     }
 
-                    BroadcastResult(command.CommandId, true, "ok", command.ActionId);
+                    BroadcastResult(command.CommandId, command.ViewerId, true, "ok", command.ActionId);
                     BroadcastDelta("action_resolved");
                     break;
 
@@ -151,22 +151,23 @@ namespace SoulForge.Viewer
                         playerWeaponController.Equip(fallbackViewerWeapon);
                     }
 
-                    BroadcastResult(command.CommandId, true, "ok", command.ActionId);
+                    BroadcastResult(command.CommandId, command.ViewerId, true, "ok", command.ActionId);
                     BroadcastDelta("action_resolved");
                     break;
 
                 default:
-                    BroadcastResult(command.CommandId, false, "action_disabled", command.ActionId);
+                    BroadcastResult(command.CommandId, command.ViewerId, false, "action_disabled", command.ActionId);
                     BroadcastDelta("action_resolved");
                     break;
             }
         }
 
-        private void BroadcastResult(string commandId, bool success, string reason, string actionId)
+        private void BroadcastResult(string commandId, string viewerId, bool success, string reason, string actionId)
         {
             broadcaster?.BroadcastActionResolved(new ViewerActionResult
             {
                 CommandId = commandId,
+                ViewerId = viewerId,
                 Success = success,
                 Reason = reason,
                 ActionId = actionId

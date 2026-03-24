@@ -75,10 +75,10 @@ namespace SoulForge.Editor
             AssignRewardDefaults(reward);
             AssignEncounterDefaults(encounter, weakEnemy);
 
-            AssignViewerActionDefaults(spawnWeak, "spawn_weak_enemy", Viewer.ViewerActionCategory.Hostile, 25, 5f, 1, "weak_spawn", 0f);
-            AssignViewerActionDefaults(spawnElite, "spawn_elite_enemy", Viewer.ViewerActionCategory.Hostile, 120, 20f, 4, "elite_spawn", 0f);
-            AssignViewerActionDefaults(dropHeal, "drop_heal", Viewer.ViewerActionCategory.Support, 40, 10f, 1, string.Empty, 1f);
-            AssignViewerActionDefaults(dropWeapon, "drop_random_weapon", Viewer.ViewerActionCategory.Support, 80, 15f, 2, string.Empty, 0f);
+            AssignViewerActionDefaults(spawnWeak, "spawn_weak_enemy", "Summon Grunt", "Send a basic enemy into the room.", Viewer.ViewerActionCategory.Hostile, 20, 4f, 1, "weak_spawn", 0f, new Color(0.85f, 0.34f, 0.34f));
+            AssignViewerActionDefaults(spawnElite, "spawn_elite_enemy", "Summon Elite", "Drop a dangerous elite into the fight.", Viewer.ViewerActionCategory.Hostile, 75, 12f, 3, "elite_spawn", 0f, new Color(0.92f, 0.54f, 0.16f));
+            AssignViewerActionDefaults(dropHeal, "drop_heal", "Emergency Heal", "Restore a small chunk of host HP.", Viewer.ViewerActionCategory.Support, 30, 8f, 1, string.Empty, 2f, new Color(0.26f, 0.74f, 0.42f));
+            AssignViewerActionDefaults(dropWeapon, "drop_random_weapon", "Forge Weapon", "Drop a funded weapon for the host inventory.", Viewer.ViewerActionCategory.Support, 55, 10f, 2, string.Empty, 0f, new Color(0.34f, 0.58f, 0.95f));
             AssignStoreDefaults(storeCatalog, spawnWeak, spawnElite, dropHeal, dropWeapon);
             AssignEconomyDefaults(economyConfig);
 
@@ -248,21 +248,27 @@ namespace SoulForge.Editor
         private static void AssignViewerActionDefaults(
             ViewerActionDefinition action,
             string actionId,
+            string displayName,
+            string description,
             Viewer.ViewerActionCategory category,
             int price,
             float cooldown,
             int budgetCost,
             string targetId,
-            float healAmount)
+            float healAmount,
+            Color accentColor)
         {
             SerializedObject so = new(action);
             so.FindProperty("<ActionId>k__BackingField").stringValue = actionId;
+            so.FindProperty("<DisplayName>k__BackingField").stringValue = displayName;
+            so.FindProperty("<Description>k__BackingField").stringValue = description;
             so.FindProperty("<Category>k__BackingField").enumValueIndex = (int)category;
             so.FindProperty("<Price>k__BackingField").intValue = price;
             so.FindProperty("<Cooldown>k__BackingField").floatValue = cooldown;
             so.FindProperty("<BudgetCost>k__BackingField").intValue = budgetCost;
             so.FindProperty("<TargetId>k__BackingField").stringValue = targetId;
             so.FindProperty("<HealAmount>k__BackingField").floatValue = healAmount;
+            so.FindProperty("<AccentColor>k__BackingField").colorValue = accentColor;
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
@@ -290,12 +296,12 @@ namespace SoulForge.Editor
         private static void AssignEconomyDefaults(ViewerEconomyConfig config)
         {
             SerializedObject so = new(config);
-            so.FindProperty("<JoinReward>k__BackingField").intValue = 100;
-            so.FindProperty("<WatchRewardPerMinute>k__BackingField").intValue = 10;
-            so.FindProperty("<RoomClearReward>k__BackingField").intValue = 15;
-            so.FindProperty("<BossClearReward>k__BackingField").intValue = 50;
-            so.FindProperty("<MaxQueuedCommands>k__BackingField").intValue = 8;
-            so.FindProperty("<DefaultRoomBudget>k__BackingField").intValue = 5;
+            so.FindProperty("<JoinReward>k__BackingField").intValue = 120;
+            so.FindProperty("<WatchRewardPerMinute>k__BackingField").intValue = 20;
+            so.FindProperty("<RoomClearReward>k__BackingField").intValue = 25;
+            so.FindProperty("<BossClearReward>k__BackingField").intValue = 75;
+            so.FindProperty("<MaxQueuedCommands>k__BackingField").intValue = 6;
+            so.FindProperty("<DefaultRoomBudget>k__BackingField").intValue = 6;
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 

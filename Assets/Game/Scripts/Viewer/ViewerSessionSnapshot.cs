@@ -6,6 +6,7 @@ namespace SoulForge.Viewer
     public sealed class ViewerSessionSnapshot
     {
         public string SessionId;
+        public string ViewerId;
         public int RoomIndex;
         public string RoomPhase;
         public float HostHp;
@@ -13,5 +14,6 @@ namespace SoulForge.Viewer
         public int AliveEnemyCount;
         public int QueueCount;
         public int RoomBudget;
+        public int ViewerBalance;
     }
 }

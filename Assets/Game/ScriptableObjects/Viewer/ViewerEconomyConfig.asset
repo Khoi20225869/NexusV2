@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: dc5a9fd36ddf9604a9e2324028bde119, type: 3}
   m_Name: ViewerEconomyConfig
   m_EditorClassIdentifier: Assembly-CSharp::SoulForge.Economy.ViewerEconomyConfig
-  <JoinReward>k__BackingField: 100
-  <WatchRewardPerMinute>k__BackingField: 10
-  <RoomClearReward>k__BackingField: 15
-  <BossClearReward>k__BackingField: 50
-  <MaxQueuedCommands>k__BackingField: 8
-  <DefaultRoomBudget>k__BackingField: 5
+  <JoinReward>k__BackingField: 120
+  <WatchRewardPerMinute>k__BackingField: 20
+  <RoomClearReward>k__BackingField: 25
+  <BossClearReward>k__BackingField: 75
+  <MaxQueuedCommands>k__BackingField: 6
+  <DefaultRoomBudget>k__BackingField: 6
