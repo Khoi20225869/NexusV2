@@ -3,6 +3,7 @@ using SoulForge.Bootstrap;
 using SoulForge.Data;
 using SoulForge.Hub;
 using SoulForge.UI;
+using SoulForge.Viewer;
 using TMPro;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -25,6 +26,7 @@ namespace SoulForge.Editor
 
             CreateCamera();
             CreateEventSystem();
+            CreateHostSession();
             Transform canvasRoot = CreateCanvas();
             HeroDefinition baseHero = AssetDatabase.LoadAssetAtPath<HeroDefinition>("Assets/Game/ScriptableObjects/Heroes/Hero_Default.asset");
             if (baseHero == null)
@@ -43,6 +45,13 @@ namespace SoulForge.Editor
             AssetDatabase.Refresh();
             EditorGUIUtility.PingObject(AssetDatabase.LoadAssetAtPath<SceneAsset>(scenePath));
             Debug.Log("Hub baseline scene created.");
+        }
+
+        private static void CreateHostSession()
+        {
+            GameObject hostSession = new("HostSession");
+            hostSession.AddComponent<ViewerSessionService>();
+            hostSession.AddComponent<HostViewerWebSocketServer>();
         }
 
         private static void CreateCamera()

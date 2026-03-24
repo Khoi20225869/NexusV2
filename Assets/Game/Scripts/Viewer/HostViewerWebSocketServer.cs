@@ -10,11 +10,14 @@ using SoulForge.Bootstrap;
 using SoulForge.Economy;
 using SoulForge.Player;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace SoulForge.Viewer
 {
     public sealed class HostViewerWebSocketServer : MonoBehaviour
     {
+        private static HostViewerWebSocketServer instance;
+
         [Serializable]
         private sealed class JoinRequest
         {
@@ -56,73 +59,42 @@ namespace SoulForge.Viewer
         private CancellationTokenSource cancellation;
         private HttpListener listener;
 
+        public static HostViewerWebSocketServer Instance => instance;
         public string ListenPrefix => listenPrefix;
 
         private void Awake()
         {
-            if (sessionService == null)
+            if (instance != null && instance != this)
             {
-                sessionService = FindFirstObjectByType<ViewerSessionService>();
+                Destroy(gameObject);
+                return;
             }
 
-            if (stateBroadcaster == null)
-            {
-                stateBroadcaster = FindFirstObjectByType<StateBroadcaster>();
-            }
-
-            if (actionExecutor == null)
-            {
-                actionExecutor = FindFirstObjectByType<ViewerActionExecutor>();
-            }
-
-            if (economyService == null)
-            {
-                economyService = FindFirstObjectByType<ViewerEconomyService>();
-            }
-
-            if (runController == null)
-            {
-                runController = FindFirstObjectByType<RunController>();
-            }
-
-            if (playerHealth == null)
-            {
-                playerHealth = FindFirstObjectByType<PlayerHealth>();
-            }
-
-            if (viewerActionQueue == null)
-            {
-                viewerActionQueue = FindFirstObjectByType<ViewerActionQueue>();
-            }
-
-            if (roomBudgetService == null)
-            {
-                roomBudgetService = FindFirstObjectByType<ViewerRoomBudgetService>();
-            }
+            instance = this;
+            DontDestroyOnLoad(gameObject);
+            RebindSceneReferences();
         }
 
         private void OnEnable()
         {
-            if (stateBroadcaster != null)
-            {
-                stateBroadcaster.SnapshotBroadcast += BroadcastSnapshot;
-                stateBroadcaster.DeltaBroadcast += BroadcastDelta;
-                stateBroadcaster.ActionResultBroadcast += BroadcastResult;
-            }
-
+            SceneManager.sceneLoaded += OnSceneLoaded;
+            SubscribeBroadcaster(stateBroadcaster);
             StartServer();
         }
 
         private void OnDisable()
         {
-            if (stateBroadcaster != null)
-            {
-                stateBroadcaster.SnapshotBroadcast -= BroadcastSnapshot;
-                stateBroadcaster.DeltaBroadcast -= BroadcastDelta;
-                stateBroadcaster.ActionResultBroadcast -= BroadcastResult;
-            }
-
+            SceneManager.sceneLoaded -= OnSceneLoaded;
+            SubscribeBroadcaster(null);
             StopServer();
+        }
+
+        private void OnDestroy()
+        {
+            if (instance == this)
+            {
+                instance = null;
+            }
         }
 
         private void Update()
@@ -191,6 +163,52 @@ namespace SoulForge.Viewer
             listener = null;
             cancellation?.Dispose();
             cancellation = null;
+        }
+
+        private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+        {
+            RebindSceneReferences();
+            BroadcastSnapshot(BuildSnapshot());
+        }
+
+        private void RebindSceneReferences()
+        {
+            if (sessionService == null)
+            {
+                sessionService = FindFirstObjectByType<ViewerSessionService>();
+            }
+
+            StateBroadcaster nextBroadcaster = FindFirstObjectByType<StateBroadcaster>();
+            if (nextBroadcaster != stateBroadcaster)
+            {
+                SubscribeBroadcaster(nextBroadcaster);
+            }
+
+            actionExecutor = FindFirstObjectByType<ViewerActionExecutor>();
+            economyService = FindFirstObjectByType<ViewerEconomyService>();
+            runController = FindFirstObjectByType<RunController>();
+            playerHealth = FindFirstObjectByType<PlayerHealth>();
+            viewerActionQueue = FindFirstObjectByType<ViewerActionQueue>();
+            roomBudgetService = FindFirstObjectByType<ViewerRoomBudgetService>();
+        }
+
+        private void SubscribeBroadcaster(StateBroadcaster nextBroadcaster)
+        {
+            if (stateBroadcaster != null)
+            {
+                stateBroadcaster.SnapshotBroadcast -= BroadcastSnapshot;
+                stateBroadcaster.DeltaBroadcast -= BroadcastDelta;
+                stateBroadcaster.ActionResultBroadcast -= BroadcastResult;
+            }
+
+            stateBroadcaster = nextBroadcaster;
+
+            if (stateBroadcaster != null)
+            {
+                stateBroadcaster.SnapshotBroadcast += BroadcastSnapshot;
+                stateBroadcaster.DeltaBroadcast += BroadcastDelta;
+                stateBroadcaster.ActionResultBroadcast += BroadcastResult;
+            }
         }
 
         private async Task AcceptLoopAsync(CancellationToken token)
