@@ -11,5 +11,8 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Game/Scenes/Run_Prototype.unity
     guid: 534bb16447ed23945905699bef63394f
+  - enabled: 1
+    path: Assets/Game/Scenes/Viewer_Client.unity
+    guid: c2d28ad86ba081045a0fb82ad35a37c5
   m_configObjects: {}
   m_UseUCBPForAssetBundles: 0

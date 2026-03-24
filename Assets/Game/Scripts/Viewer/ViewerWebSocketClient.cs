@@ -92,7 +92,7 @@ namespace SoulForge.Viewer
             }
             catch (Exception exception)
             {
-                Debug.LogError($"Viewer websocket connect failed: {exception.Message}");
+                Debug.LogError($"Viewer websocket connect failed to {Url}: {exception.Message}. Check host Play mode, host IP, port, and firewall.");
                 Disconnect();
             }
         }
