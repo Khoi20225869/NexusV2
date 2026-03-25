@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace SoulForge.Viewer
 {
@@ -31,6 +32,9 @@ namespace SoulForge.Viewer
             public string ViewerId;
             public string ActionId;
             public string TargetId;
+            public bool HasViewportTarget;
+            public float ViewportX;
+            public float ViewportY;
         }
 
         [SerializeField] private string hostIp = "127.0.0.1";
@@ -38,6 +42,7 @@ namespace SoulForge.Viewer
         [SerializeField] private string viewerId = "viewer_01";
         [SerializeField] private string sessionId = "local-session";
         [SerializeField] private bool autoConnect = true;
+        [SerializeField] private string liveSceneName = "Viewer_Live";
         [SerializeField] private StateBroadcaster stateBroadcaster;
 
         private readonly ConcurrentQueue<string> incomingMessages = new();
@@ -63,6 +68,8 @@ namespace SoulForge.Viewer
 
         private void Awake()
         {
+            DontDestroyOnLoad(gameObject);
+
             if (string.IsNullOrWhiteSpace(viewerId) || viewerId == "viewer_01")
             {
                 viewerId = GetOrCreateViewerId();
@@ -216,7 +223,7 @@ namespace SoulForge.Viewer
             return builder.ToString().TrimEnd();
         }
 
-        public void SubmitAction(string actionId, string targetId = "")
+        public void SubmitAction(string actionId, string targetId = "", bool hasViewportTarget = false, float viewportX = 0f, float viewportY = 0f)
         {
             if (!IsConnected)
             {
@@ -229,7 +236,10 @@ namespace SoulForge.Viewer
                 CommandId = $"net_cmd_{commandCounter:0000}",
                 ViewerId = viewerId,
                 ActionId = actionId,
-                TargetId = targetId
+                TargetId = targetId,
+                HasViewportTarget = hasViewportTarget,
+                ViewportX = viewportX,
+                ViewportY = viewportY
             };
 
             SendRaw($"command|{JsonUtility.ToJson(payload)}");
@@ -329,6 +339,7 @@ namespace SoulForge.Viewer
                     if (payload == "joined")
                     {
                         RememberSuccessfulSession();
+                        TryOpenLiveScene();
                     }
                     SetStatus(payload);
                     break;
@@ -386,6 +397,28 @@ namespace SoulForge.Viewer
         private static string BuildSessionLabel(string ip, string code)
         {
             return $"{ip}  [{code}]";
+        }
+
+        private void TryOpenLiveScene()
+        {
+            if (string.IsNullOrWhiteSpace(liveSceneName))
+            {
+                return;
+            }
+
+            string activeSceneName = SceneManager.GetActiveScene().name;
+            if (string.Equals(activeSceneName, liveSceneName, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            if (!Application.CanStreamedLevelBeLoaded(liveSceneName))
+            {
+                Debug.LogWarning($"Viewer live scene '{liveSceneName}' is not loadable.");
+                return;
+            }
+
+            SceneManager.LoadScene(liveSceneName);
         }
     }
 }

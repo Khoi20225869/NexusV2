@@ -2,6 +2,7 @@ using SoulForge.Data;
 using SoulForge.Economy;
 using SoulForge.Enemies;
 using SoulForge.Player;
+using SoulForge.Rooms;
 using UnityEngine;
 
 namespace SoulForge.Viewer
@@ -18,9 +19,10 @@ namespace SoulForge.Viewer
         [SerializeField] private PlayerInventory playerInventory;
         [SerializeField] private ViewerActionQueue viewerActionQueue;
         [SerializeField] private ViewerRoomBudgetService roomBudgetService;
-        [SerializeField] private SoulForge.Rooms.RoomController roomController;
+        [SerializeField] private SoulForge.Bootstrap.RunController runController;
         [SerializeField] private float resolveInterval = 3f;
         [SerializeField] private WeaponDefinition fallbackViewerWeapon;
+        [SerializeField] private WeaponPickup viewerWeaponPickupPrefab;
 
         private float resolveCooldown;
 
@@ -56,9 +58,9 @@ namespace SoulForge.Viewer
                 roomBudgetService = FindFirstObjectByType<ViewerRoomBudgetService>();
             }
 
-            if (roomController == null)
+            if (runController == null)
             {
-                roomController = FindFirstObjectByType<SoulForge.Rooms.RoomController>();
+                runController = FindFirstObjectByType<SoulForge.Bootstrap.RunController>();
             }
         }
 
@@ -126,7 +128,10 @@ namespace SoulForge.Viewer
             {
                 case "spawn_weak_enemy":
                 case "spawn_elite_enemy":
-                    bool spawned = enemySpawner != null && action != null && enemySpawner.SpawnById(action.TargetId);
+                    bool spawned = TryResolveWorldTarget(command, out Vector3 spawnPosition) &&
+                        enemySpawner != null &&
+                        action != null &&
+                        enemySpawner.SpawnByIdAt(action.TargetId, spawnPosition);
                     BroadcastResult(command.CommandId, command.ViewerId, spawned, spawned ? "ok" : "spawn_failed", command.ActionId);
                     BroadcastDelta("action_resolved");
                     break;
@@ -142,16 +147,21 @@ namespace SoulForge.Viewer
                     break;
 
                 case "drop_random_weapon":
-                    if (playerInventory != null && fallbackViewerWeapon != null)
+                    bool droppedWeapon = TryResolveWorldTarget(command, out Vector3 dropPosition) &&
+                        TryDropViewerWeapon(dropPosition);
+
+                    if (!droppedWeapon && playerInventory != null && fallbackViewerWeapon != null)
                     {
                         playerInventory.AddWeapon(fallbackViewerWeapon, true);
+                        droppedWeapon = true;
                     }
-                    else if (playerWeaponController != null && fallbackViewerWeapon != null)
+                    else if (!droppedWeapon && playerWeaponController != null && fallbackViewerWeapon != null)
                     {
                         playerWeaponController.Equip(fallbackViewerWeapon);
+                        droppedWeapon = true;
                     }
 
-                    BroadcastResult(command.CommandId, command.ViewerId, true, "ok", command.ActionId);
+                    BroadcastResult(command.CommandId, command.ViewerId, droppedWeapon, droppedWeapon ? "ok" : "drop_failed", command.ActionId);
                     BroadcastDelta("action_resolved");
                     break;
 
@@ -179,12 +189,77 @@ namespace SoulForge.Viewer
             broadcaster?.BroadcastDelta(new ViewerSessionDelta
             {
                 EventType = eventType,
-                RoomPhase = roomController != null && roomController.IsLocked ? "combat" : "reward",
+                RoomPhase = runController != null ? runController.CurrentPhase : "explore",
                 HostHp = playerHealth != null ? playerHealth.CurrentHealth : 0f,
-                AliveEnemyCount = roomController != null ? roomController.ActiveEnemyCount : 0,
+                AliveEnemyCount = runController != null ? runController.TotalAliveEnemyCount : 0,
                 QueueCount = viewerActionQueue != null ? viewerActionQueue.Count : 0,
-                RoomBudget = roomBudgetService != null ? roomBudgetService.CurrentBudget : 0
+                RoomBudget = roomBudgetService != null ? roomBudgetService.CurrentBudget : 0,
+                PlayerMarker = BuildMarker("player", "player", playerHealth != null ? playerHealth.transform : null),
+                TargetMarker = BuildMarker("target", "target", FindFirstObjectByType<RunFinishGate>()?.transform),
+                EnemyMarkers = BuildEnemyMarkers()
             });
+        }
+
+        private bool TryResolveWorldTarget(in ViewerCommand command, out Vector3 worldPosition)
+        {
+            worldPosition = Vector3.zero;
+            if (!command.HasViewportTarget || Camera.main == null)
+            {
+                return false;
+            }
+
+            Vector3 viewport = new(command.ViewportX, command.ViewportY, Mathf.Abs(Camera.main.transform.position.z));
+            worldPosition = Camera.main.ViewportToWorldPoint(viewport);
+            worldPosition.z = 0f;
+            return true;
+        }
+
+        private bool TryDropViewerWeapon(Vector3 worldPosition)
+        {
+            if (viewerWeaponPickupPrefab == null || fallbackViewerWeapon == null)
+            {
+                return false;
+            }
+
+            WeaponPickup pickup = Instantiate(viewerWeaponPickupPrefab, worldPosition, Quaternion.identity);
+            pickup.Configure(fallbackViewerWeapon);
+            return true;
+        }
+
+        private static ViewerViewportMarkerState BuildMarker(string id, string kind, Transform target)
+        {
+            Camera camera = Camera.main;
+            if (camera == null || target == null)
+            {
+                return new ViewerViewportMarkerState { Id = id, Kind = kind, Visible = false };
+            }
+
+            Vector3 viewport = camera.WorldToViewportPoint(target.position);
+            return new ViewerViewportMarkerState
+            {
+                Id = id,
+                Kind = kind,
+                ViewportX = Mathf.Clamp01(viewport.x),
+                ViewportY = Mathf.Clamp01(viewport.y),
+                Visible = viewport.z >= 0f && viewport.x >= 0f && viewport.x <= 1f && viewport.y >= 0f && viewport.y <= 1f
+            };
+        }
+
+        private static ViewerViewportMarkerState[] BuildEnemyMarkers()
+        {
+            EnemyController[] enemies = FindObjectsByType<EnemyController>(FindObjectsSortMode.None);
+            if (enemies == null || enemies.Length == 0)
+            {
+                return System.Array.Empty<ViewerViewportMarkerState>();
+            }
+
+            ViewerViewportMarkerState[] markers = new ViewerViewportMarkerState[enemies.Length];
+            for (int i = 0; i < enemies.Length; i++)
+            {
+                markers[i] = BuildMarker($"enemy_{i:00}", "enemy", enemies[i] != null ? enemies[i].transform : null);
+            }
+
+            return markers;
         }
     }
 }

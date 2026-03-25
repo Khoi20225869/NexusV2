@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SoulForge.Data.HeroDefinition
   <HeroId>k__BackingField: hero_knight
   <DisplayName>k__BackingField: Knight
-  <Description>k__BackingField: Balanced frontliner with reliable pistol shots.
+  <Description>k__BackingField: Balanced frontliner with fast melee swings.
   <StartingWeapon>k__BackingField: {fileID: 11400000, guid: 6e35e42d29ddafe4586980ef36620473,
     type: 2}
   <CharacterPrefab>k__BackingField: {fileID: 952917489031161207, guid: ae19f07269ec2484fb527be9fd1e18a3,

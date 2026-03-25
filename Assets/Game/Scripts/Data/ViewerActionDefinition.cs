@@ -14,6 +14,7 @@ namespace SoulForge.Data
         [field: SerializeField] public float Cooldown { get; private set; } = 5f;
         [field: SerializeField] public int BudgetCost { get; private set; } = 1;
         [field: SerializeField] public string TargetId { get; private set; } = "";
+        [field: SerializeField] public bool RequiresWorldTarget { get; private set; } = false;
         [field: SerializeField] public float HealAmount { get; private set; } = 1f;
         [field: SerializeField] public Color AccentColor { get; private set; } = Color.white;
     }

@@ -92,6 +92,15 @@ namespace SoulForge.Rooms
                 filtered.Add(entry);
             }
 
+            if (IsBossRoom())
+            {
+                var bossFiltered = filtered.FindAll(entry => entry != null && entry.Weapon != null && entry.Weapon.Rarity >= WeaponRarity.Rare);
+                if (bossFiltered.Count > 0)
+                {
+                    return bossFiltered;
+                }
+            }
+
             return filtered.Count > 0 ? filtered : new System.Collections.Generic.List<WeaponLootEntry>(source);
         }
 
@@ -116,7 +125,21 @@ namespace SoulForge.Rooms
                 filtered.Add(weapon);
             }
 
+            if (IsBossRoom())
+            {
+                var bossFiltered = filtered.FindAll(weapon => weapon != null && weapon.Rarity >= WeaponRarity.Rare);
+                if (bossFiltered.Count > 0)
+                {
+                    return bossFiltered;
+                }
+            }
+
             return filtered.Count > 0 ? filtered : new System.Collections.Generic.List<WeaponDefinition>(source);
+        }
+
+        private bool IsBossRoom()
+        {
+            return OwnerRoom != null && OwnerRoom.Tier == RoomTier.Tier3;
         }
     }
 }

@@ -9,7 +9,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using SoulForge.Bootstrap;
 using SoulForge.Economy;
+using SoulForge.Enemies;
 using SoulForge.Player;
+using SoulForge.Rooms;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -34,6 +36,9 @@ namespace SoulForge.Viewer
             public string ViewerId;
             public string ActionId;
             public string TargetId;
+            public bool HasViewportTarget;
+            public float ViewportX;
+            public float ViewportY;
         }
 
         private sealed class ClientConnection
@@ -55,10 +60,12 @@ namespace SoulForge.Viewer
         [SerializeField] private PlayerHealth playerHealth;
         [SerializeField] private ViewerActionQueue viewerActionQueue;
         [SerializeField] private ViewerRoomBudgetService roomBudgetService;
+        [SerializeField] private int debugTopUpBalance = 9999;
 
         private readonly ConcurrentQueue<Action> mainThreadActions = new();
         private readonly List<ClientConnection> clients = new();
         private readonly object clientsLock = new();
+        private readonly HashSet<string> rewardedViewerIds = new();
 
         private CancellationTokenSource cancellation;
         private TcpListener listener;
@@ -70,7 +77,7 @@ namespace SoulForge.Viewer
         {
             if (instance != null && instance != this)
             {
-                Destroy(gameObject);
+                Destroy(this);
                 return;
             }
 
@@ -170,8 +177,11 @@ namespace SoulForge.Viewer
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
             RebindSceneReferences();
+            EnsureBudgetInitialized();
+            GrantJoinRewardsForConnectedViewers();
             BroadcastSnapshot(BuildSnapshot());
         }
+
 
         private void RebindSceneReferences()
         {
@@ -299,6 +309,7 @@ namespace SoulForge.Viewer
             {
                 case "join":
                 {
+                    RebindSceneReferences();
                     JoinRequest request = JsonUtility.FromJson<JoinRequest>(payload);
                     if (request == null || string.IsNullOrWhiteSpace(request.ViewerId))
                     {
@@ -316,20 +327,30 @@ namespace SoulForge.Viewer
 
                     client.ViewerId = request.ViewerId;
                     Debug.Log($"Viewer TCP join accepted: {client.ViewerId}");
-                    economyService?.GrantJoinReward(request.ViewerId);
+                    EnsureBudgetInitialized();
+                    EnsureJoinReward(request.ViewerId);
                     SendAsync(client, "notice|joined");
                     SendAsync(client, $"snapshot|{JsonUtility.ToJson(BuildSnapshot(client.ViewerId))}");
                     break;
                 }
                 case "command":
                 {
+                    RebindSceneReferences();
                     PurchaseRequest request = JsonUtility.FromJson<PurchaseRequest>(payload);
-                    if (request == null || actionExecutor == null)
+                    if (request == null)
                     {
                         return;
                     }
 
-                    ViewerCommand command = new(request.CommandId, request.ViewerId, request.ActionId, request.TargetId);
+                    if (actionExecutor == null)
+                    {
+                        Debug.LogWarning($"Viewer command dropped because host action executor is missing. Action={request.ActionId}, Viewer={request.ViewerId}");
+                        SendAsync(client, "notice|host_not_ready");
+                        return;
+                    }
+
+                    Debug.Log($"Viewer command received: viewer={request.ViewerId}, action={request.ActionId}, target={request.TargetId}, viewport=({request.ViewportX:0.000},{request.ViewportY:0.000})");
+                    ViewerCommand command = new(request.CommandId, request.ViewerId, request.ActionId, request.TargetId, request.HasViewportTarget, request.ViewportX, request.ViewportY);
                     actionExecutor.TrySubmit(command);
                     break;
                 }
@@ -338,18 +359,23 @@ namespace SoulForge.Viewer
 
         private ViewerSessionSnapshot BuildSnapshot(string viewerId = "")
         {
+            RebindSceneReferences();
+            EnsureBudgetInitialized();
             return new ViewerSessionSnapshot
             {
                 SessionId = sessionService != null ? sessionService.SessionId : "local-session",
                 ViewerId = viewerId,
                 RoomIndex = runController != null ? runController.RoomIndex : 0,
-                RoomPhase = runController != null && runController.CurrentRoom != null && runController.CurrentRoom.IsLocked ? "combat" : "reward",
+                RoomPhase = runController != null ? runController.CurrentPhase : "explore",
                 HostHp = playerHealth != null ? playerHealth.CurrentHealth : 0f,
                 HostShield = playerHealth != null ? playerHealth.MaxShield : 0f,
-                AliveEnemyCount = runController != null && runController.CurrentRoom != null ? runController.CurrentRoom.ActiveEnemyCount : 0,
+                AliveEnemyCount = runController != null ? runController.TotalAliveEnemyCount : 0,
                 QueueCount = viewerActionQueue != null ? viewerActionQueue.Count : 0,
                 RoomBudget = roomBudgetService != null ? roomBudgetService.CurrentBudget : 0,
-                ViewerBalance = economyService != null && !string.IsNullOrWhiteSpace(viewerId) ? economyService.GetBalance(viewerId) : 0
+                ViewerBalance = economyService != null && !string.IsNullOrWhiteSpace(viewerId) ? economyService.GetBalance(viewerId) : 0,
+                PlayerMarker = BuildPlayerMarker(),
+                TargetMarker = BuildTargetMarker(),
+                EnemyMarkers = BuildEnemyMarkers()
             };
         }
 
@@ -370,7 +396,10 @@ namespace SoulForge.Viewer
                     AliveEnemyCount = snapshot.AliveEnemyCount,
                     QueueCount = snapshot.QueueCount,
                     RoomBudget = snapshot.RoomBudget,
-                    ViewerBalance = economyService != null && !string.IsNullOrWhiteSpace(client.ViewerId) ? economyService.GetBalance(client.ViewerId) : 0
+                    ViewerBalance = economyService != null && !string.IsNullOrWhiteSpace(client.ViewerId) ? economyService.GetBalance(client.ViewerId) : 0,
+                    PlayerMarker = snapshot.PlayerMarker,
+                    TargetMarker = snapshot.TargetMarker,
+                    EnemyMarkers = snapshot.EnemyMarkers
                 };
                 SendAsync(client, $"snapshot|{JsonUtility.ToJson(perViewerSnapshot)}");
             }
@@ -391,7 +420,10 @@ namespace SoulForge.Viewer
                     AliveEnemyCount = delta.AliveEnemyCount,
                     QueueCount = delta.QueueCount,
                     RoomBudget = delta.RoomBudget,
-                    ViewerBalance = economyService != null && !string.IsNullOrWhiteSpace(client.ViewerId) ? economyService.GetBalance(client.ViewerId) : 0
+                    ViewerBalance = economyService != null && !string.IsNullOrWhiteSpace(client.ViewerId) ? economyService.GetBalance(client.ViewerId) : 0,
+                    PlayerMarker = delta.PlayerMarker,
+                    TargetMarker = delta.TargetMarker,
+                    EnemyMarkers = delta.EnemyMarkers
                 };
                 SendAsync(client, $"delta|{JsonUtility.ToJson(perViewerDelta)}");
             }
@@ -409,6 +441,109 @@ namespace SoulForge.Viewer
             {
                 SendAsync(snapshot[i], message);
             }
+        }
+
+        private void GrantJoinRewardsForConnectedViewers()
+        {
+            List<ClientConnection> snapshot = SnapshotClients();
+            for (int i = 0; i < snapshot.Count; i++)
+            {
+                EnsureJoinReward(snapshot[i].ViewerId);
+            }
+        }
+
+        private void EnsureJoinReward(string viewerId)
+        {
+            if (economyService == null || string.IsNullOrWhiteSpace(viewerId))
+            {
+                return;
+            }
+
+            int currentBalance = economyService.GetBalance(viewerId);
+            if (rewardedViewerIds.Contains(viewerId) && currentBalance > 0)
+            {
+                return;
+            }
+
+            if (currentBalance <= 0)
+            {
+                economyService.AddCurrency(viewerId, Mathf.Max(1, debugTopUpBalance));
+            }
+            else
+            {
+                economyService.GrantJoinReward(viewerId);
+            }
+
+            rewardedViewerIds.Add(viewerId);
+        }
+
+        private void EnsureBudgetInitialized()
+        {
+            if (roomBudgetService != null && roomBudgetService.CurrentBudget <= 0)
+            {
+                roomBudgetService.ResetBudget();
+            }
+        }
+
+        private ViewerViewportMarkerState BuildPlayerMarker()
+        {
+            if (playerHealth == null)
+            {
+                return new ViewerViewportMarkerState { Id = "player", Kind = "player", Visible = false };
+            }
+
+            return BuildMarker("player", "player", playerHealth.transform.position);
+        }
+
+        private ViewerViewportMarkerState BuildTargetMarker()
+        {
+            RunFinishGate gate = FindFirstObjectByType<RunFinishGate>();
+            if (gate == null)
+            {
+                return new ViewerViewportMarkerState { Id = "target", Kind = "target", Visible = false };
+            }
+
+            return BuildMarker("target", "target", gate.transform.position);
+        }
+
+        private ViewerViewportMarkerState[] BuildEnemyMarkers()
+        {
+            EnemyController[] enemies = FindObjectsByType<EnemyController>(FindObjectsSortMode.None);
+            if (enemies == null || enemies.Length == 0)
+            {
+                return Array.Empty<ViewerViewportMarkerState>();
+            }
+
+            ViewerViewportMarkerState[] markers = new ViewerViewportMarkerState[enemies.Length];
+            for (int i = 0; i < enemies.Length; i++)
+            {
+                EnemyController enemy = enemies[i];
+                markers[i] = enemy != null
+                    ? BuildMarker($"enemy_{i:00}", "enemy", enemy.transform.position)
+                    : new ViewerViewportMarkerState { Id = $"enemy_{i:00}", Kind = "enemy", Visible = false };
+            }
+
+            return markers;
+        }
+
+        private static ViewerViewportMarkerState BuildMarker(string id, string kind, Vector3 worldPosition)
+        {
+            Camera camera = Camera.main;
+            if (camera == null)
+            {
+                return new ViewerViewportMarkerState { Id = id, Kind = kind, Visible = false };
+            }
+
+            Vector3 viewport = camera.WorldToViewportPoint(worldPosition);
+            bool visible = viewport.z >= 0f && viewport.x >= 0f && viewport.x <= 1f && viewport.y >= 0f && viewport.y <= 1f;
+            return new ViewerViewportMarkerState
+            {
+                Id = id,
+                Kind = kind,
+                ViewportX = Mathf.Clamp01(viewport.x),
+                ViewportY = Mathf.Clamp01(viewport.y),
+                Visible = visible
+            };
         }
 
         private List<ClientConnection> SnapshotClients()

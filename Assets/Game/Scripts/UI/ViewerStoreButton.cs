@@ -1,5 +1,4 @@
 using SoulForge.Data;
-using SoulForge.Economy;
 using SoulForge.Viewer;
 using TMPro;
 using UnityEngine;
@@ -20,12 +19,8 @@ namespace SoulForge.UI
 
         private Button button;
         private ViewerActionDefinition actionDefinition;
-        private ViewerActionExecutor executor;
-        private ViewerActionValidator validator;
-        private ViewerRoomBudgetService budgetService;
-        private LocalViewerCommandTester localViewerCommandTester;
         private ViewerWebSocketClient remoteViewerClient;
-        private ViewerEconomyService economyService;
+        private ViewerTargetingController targetingController;
 
         private void Awake()
         {
@@ -48,20 +43,12 @@ namespace SoulForge.UI
 
         public void Setup(
             ViewerActionDefinition action,
-            ViewerActionExecutor targetExecutor,
-            ViewerActionValidator targetValidator,
-            ViewerEconomyService targetEconomyService,
-            ViewerRoomBudgetService targetBudgetService,
-            LocalViewerCommandTester targetLocalViewerCommandTester,
-            ViewerWebSocketClient targetRemoteViewerClient)
+            ViewerWebSocketClient targetRemoteViewerClient,
+            ViewerTargetingController targetTargetingController)
         {
             actionDefinition = action;
-            executor = targetExecutor;
-            validator = targetValidator;
-            economyService = targetEconomyService;
-            budgetService = targetBudgetService;
-            localViewerCommandTester = targetLocalViewerCommandTester;
             remoteViewerClient = targetRemoteViewerClient;
+            targetingController = targetTargetingController;
 
             if (labelText != null)
             {
@@ -93,9 +80,9 @@ namespace SoulForge.UI
                 return;
             }
 
-            if (localViewerCommandTester != null)
+            if (actionDefinition.RequiresWorldTarget && targetingController != null)
             {
-                localViewerCommandTester.SubmitAction(actionDefinition.ActionId, actionDefinition.TargetId);
+                targetingController.BeginTargeting(actionDefinition);
                 return;
             }
 
@@ -109,63 +96,18 @@ namespace SoulForge.UI
                 return;
             }
 
-            if (localViewerCommandTester == null)
-            {
-                bool ready = remoteViewerClient != null && remoteViewerClient.IsConnected;
-                button.interactable = ready;
-
-                if (background != null)
-                {
-                    background.color = ready ? Color.Lerp(actionDefinition.AccentColor, availableColor, 0.55f) : unavailableColor;
-                }
-
-                if (stateText != null)
-                {
-                    stateText.text = ready ? "Send" : "Offline";
-                }
-
-                return;
-            }
-
-            string viewerId = localViewerCommandTester.ViewerId;
-            float cooldownRemaining = validator != null ? validator.GetCooldownRemaining(actionDefinition.ActionId) : 0f;
-            int balance = economyService != null ? economyService.GetBalance(viewerId) : 0;
-            int budget = budgetService != null ? budgetService.CurrentBudget : 0;
-            bool canAfford = balance >= actionDefinition.Price;
-            bool canBudget = budget >= actionDefinition.BudgetCost;
-            bool canPurchase = validator != null ? validator.CanPurchase(viewerId, actionDefinition) : canAfford && canBudget;
-
-            button.interactable = canPurchase;
+            bool ready = remoteViewerClient != null && remoteViewerClient.IsConnected;
+            button.interactable = ready;
 
             if (background != null)
             {
-                background.color = canPurchase ? Color.Lerp(actionDefinition.AccentColor, availableColor, 0.55f) : unavailableColor;
+                background.color = ready ? Color.Lerp(actionDefinition.AccentColor, availableColor, 0.55f) : unavailableColor;
             }
 
-            if (stateText == null)
+            if (stateText != null)
             {
-                return;
+                stateText.text = !ready ? "Offline" : actionDefinition.RequiresWorldTarget ? "Target" : "Send";
             }
-
-            if (cooldownRemaining > 0f)
-            {
-                stateText.text = $"CD {cooldownRemaining:0.0}s";
-                return;
-            }
-
-            if (!canAfford)
-            {
-                stateText.text = "Need Crowns";
-                return;
-            }
-
-            if (!canBudget)
-            {
-                stateText.text = "No Budget";
-                return;
-            }
-
-            stateText.text = "Ready";
         }
     }
 }

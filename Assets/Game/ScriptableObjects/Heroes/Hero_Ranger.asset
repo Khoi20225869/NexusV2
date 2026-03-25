@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SoulForge.Data.HeroDefinition
   <HeroId>k__BackingField: hero_ranger
   <DisplayName>k__BackingField: Ranger
-  <Description>k__BackingField: Fast skirmisher built around burst damage.
+  <Description>k__BackingField: Mobile duelist who cleaves with a heavy axe.
   <StartingWeapon>k__BackingField: {fileID: 11400000, guid: 54a8ab2be11e08f40abf9567113d7696,
     type: 2}
   <CharacterPrefab>k__BackingField: {fileID: 4074985211042172253, guid: 1c0cf3ef3fd831542bfe895e4020499b,

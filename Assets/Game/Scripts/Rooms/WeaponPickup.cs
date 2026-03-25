@@ -46,6 +46,24 @@ namespace SoulForge.Rooms
             Destroy(gameObject);
         }
 
+        private void OnTriggerStay2D(Collider2D other)
+        {
+            if (weaponDefinition == null)
+            {
+                return;
+            }
+
+            PlayerInventory inventory = other.GetComponentInParent<PlayerInventory>();
+            if (inventory == null || labelText == null)
+            {
+                return;
+            }
+
+            string colorHex = ColorUtility.ToHtmlStringRGB(WeaponRarityPalette.GetColor(weaponDefinition.Rarity));
+            string suffix = inventory.Entries.Count >= inventory.Capacity ? "\n<size=60%>Full bag: swaps equipped</size>" : string.Empty;
+            labelText.text = $"{weaponDefinition.DisplayName}\n<size=70%><color=#{colorHex}>{weaponDefinition.Rarity}</color></size>{suffix}";
+        }
+
         private void RefreshLabel()
         {
             if (labelText != null)

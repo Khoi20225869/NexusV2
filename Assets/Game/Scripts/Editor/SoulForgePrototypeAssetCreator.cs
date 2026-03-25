@@ -37,9 +37,9 @@ namespace SoulForge.Editor
             ViewerStoreCatalog storeCatalog = CreateAsset<ViewerStoreCatalog>($"{Root}/Viewer/ViewerStoreCatalog.asset");
             ViewerEconomyConfig economyConfig = CreateAsset<ViewerEconomyConfig>($"{Root}/Viewer/ViewerEconomyConfig.asset");
 
-            AssignWeaponDefaults(pistol, "weapon_pistol", "Pulse Pistol", "Balanced automatic sidearm.", WeaponRarity.Common, RoomTier.Tier1, RoomTier.Tier3, 25, 12, new Color(0.64f, 0.88f, 1f), 1f, 4f, 14f);
-            AssignWeaponDefaults(shotgun, "weapon_shotgun", "Scatter Blaster", "Short-range burst weapon.", WeaponRarity.Uncommon, RoomTier.Tier2, RoomTier.Tier3, 50, 7, new Color(0.52f, 1f, 0.62f), 2f, 1.2f, 11f);
-            AssignWeaponDefaults(viewerDropWeapon, "weapon_viewer_drop", "Arc Staff", "Viewer-funded energy weapon.", WeaponRarity.Rare, RoomTier.Tier3, RoomTier.Tier3, 65, 4, new Color(0.98f, 0.58f, 1f), 1.5f, 2.5f, 13f);
+            AssignWeaponDefaults(pistol, "weapon_pistol", "Iron Saber", "Balanced melee blade with quick swings.", WeaponRarity.Common, RoomTier.Tier1, RoomTier.Tier3, 25, 12, new Color(0.64f, 0.88f, 1f), 1f, 2.4f, 1.2f, 0f);
+            AssignWeaponDefaults(shotgun, "weapon_shotgun", "Breaker Axe", "Heavy axe with slower but harder hits.", WeaponRarity.Uncommon, RoomTier.Tier2, RoomTier.Tier3, 50, 7, new Color(0.52f, 1f, 0.62f), 2f, 1.1f, 1.45f, 0f);
+            AssignWeaponDefaults(viewerDropWeapon, "weapon_viewer_drop", "Arc Spear", "Charged polearm with long melee reach.", WeaponRarity.Rare, RoomTier.Tier3, RoomTier.Tier3, 65, 4, new Color(0.98f, 0.58f, 1f), 1.5f, 1.8f, 1.7f, 0f);
 
             GameObject spumHeroPrefab = LoadBaseSpumUnitPrefab();
             GameObject knightPrefab = CreateHeroPrefab(
@@ -64,10 +64,10 @@ namespace SoulForge.Editor
                 "Assets/Resources/SPUM/SPUM_Sprites/Items/7_Back/Back_3.png",
                 new Color(0.92f, 0.84f, 1f, 1f));
 
-            AssignHeroDefaults(hero, "hero_default", "Knight", "Balanced frontliner with reliable pistol shots.", pistol, spumHeroPrefab, 6f, 4f, 5f, 4f, 8);
-            AssignHeroDefaults(knight, "hero_knight", "Knight", "Balanced frontliner with reliable pistol shots.", pistol, knightPrefab, 7f, 4f, 5f, 4f, 8, 4, new Color(0.36f, 0.85f, 1f), new Color(0.78f, 0.72f, 0.28f));
-            AssignHeroDefaults(ranger, "hero_ranger", "Ranger", "Fast skirmisher built around burst damage.", shotgun, rangerPrefab, 5f, 3f, 6.25f, 3f, 7, 5, new Color(0.55f, 1f, 0.55f), new Color(0.18f, 0.7f, 0.28f));
-            AssignHeroDefaults(mage, "hero_mage", "Mage", "Fragile caster with high utility weapon drops.", viewerDropWeapon, magePrefab, 4.5f, 5f, 5.25f, 5f, 9, 6, new Color(1f, 0.48f, 0.92f), new Color(0.64f, 0.3f, 1f));
+            AssignHeroDefaults(hero, "hero_default", "Knight", "Balanced frontliner with fast melee swings.", pistol, spumHeroPrefab, 6f, 4f, 5f, 4f, 8);
+            AssignHeroDefaults(knight, "hero_knight", "Knight", "Balanced frontliner with fast melee swings.", pistol, knightPrefab, 7f, 4f, 5f, 4f, 8, 4, new Color(0.36f, 0.85f, 1f), new Color(0.78f, 0.72f, 0.28f));
+            AssignHeroDefaults(ranger, "hero_ranger", "Ranger", "Mobile duelist who cleaves with a heavy axe.", shotgun, rangerPrefab, 5f, 3f, 6.25f, 3f, 7, 5, new Color(0.55f, 1f, 0.55f), new Color(0.18f, 0.7f, 0.28f));
+            AssignHeroDefaults(mage, "hero_mage", "Mage", "Arc fighter using a charged spear.", viewerDropWeapon, magePrefab, 4.5f, 5f, 5.25f, 5f, 9, 6, new Color(1f, 0.48f, 0.92f), new Color(0.64f, 0.3f, 1f));
             AssignRosterDefaults(roster, knight, ranger, mage);
 
             AssignEnemyDefaults(weakEnemy, "enemy_weak", 3f, 2.6f, 4f, 1.2f, 1f, true, 8f);
@@ -75,10 +75,10 @@ namespace SoulForge.Editor
             AssignRewardDefaults(reward);
             AssignEncounterDefaults(encounter, weakEnemy);
 
-            AssignViewerActionDefaults(spawnWeak, "spawn_weak_enemy", "Summon Grunt", "Send a basic enemy into the room.", Viewer.ViewerActionCategory.Hostile, 20, 4f, 1, "weak_spawn", 0f, new Color(0.85f, 0.34f, 0.34f));
-            AssignViewerActionDefaults(spawnElite, "spawn_elite_enemy", "Summon Elite", "Drop a dangerous elite into the fight.", Viewer.ViewerActionCategory.Hostile, 75, 12f, 3, "elite_spawn", 0f, new Color(0.92f, 0.54f, 0.16f));
-            AssignViewerActionDefaults(dropHeal, "drop_heal", "Emergency Heal", "Restore a small chunk of host HP.", Viewer.ViewerActionCategory.Support, 30, 8f, 1, string.Empty, 2f, new Color(0.26f, 0.74f, 0.42f));
-            AssignViewerActionDefaults(dropWeapon, "drop_random_weapon", "Forge Weapon", "Drop a funded weapon for the host inventory.", Viewer.ViewerActionCategory.Support, 55, 10f, 2, string.Empty, 0f, new Color(0.34f, 0.58f, 0.95f));
+            AssignViewerActionDefaults(spawnWeak, "spawn_weak_enemy", "Summon Grunt", "Send a basic enemy into the room.", Viewer.ViewerActionCategory.Hostile, 20, 4f, 1, "weak_spawn", true, 0f, new Color(0.85f, 0.34f, 0.34f));
+            AssignViewerActionDefaults(spawnElite, "spawn_elite_enemy", "Summon Elite", "Drop a dangerous elite into the fight.", Viewer.ViewerActionCategory.Hostile, 75, 12f, 3, "elite_spawn", true, 0f, new Color(0.92f, 0.54f, 0.16f));
+            AssignViewerActionDefaults(dropHeal, "drop_heal", "Emergency Heal", "Restore a small chunk of host HP.", Viewer.ViewerActionCategory.Support, 30, 8f, 1, string.Empty, false, 2f, new Color(0.26f, 0.74f, 0.42f));
+            AssignViewerActionDefaults(dropWeapon, "drop_random_weapon", "Forge Weapon", "Drop a funded weapon pickup onto the floor.", Viewer.ViewerActionCategory.Support, 55, 10f, 2, string.Empty, true, 0f, new Color(0.34f, 0.58f, 0.95f));
             AssignStoreDefaults(storeCatalog, spawnWeak, spawnElite, dropHeal, dropWeapon);
             AssignEconomyDefaults(economyConfig);
 
@@ -182,7 +182,7 @@ namespace SoulForge.Editor
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        private static void AssignWeaponDefaults(WeaponDefinition weapon, string id, string displayName, string description, WeaponRarity rarity, RoomTier minRoomTier, RoomTier maxRoomTier, int shopPrice, int chestWeight, Color accentColor, float damage, float fireRate, float projectileSpeed)
+        private static void AssignWeaponDefaults(WeaponDefinition weapon, string id, string displayName, string description, WeaponRarity rarity, RoomTier minRoomTier, RoomTier maxRoomTier, int shopPrice, int chestWeight, Color accentColor, float damage, float fireRate, float attackRange, float projectileSpeed)
         {
             SerializedObject so = new(weapon);
             so.FindProperty("<WeaponId>k__BackingField").stringValue = id;
@@ -196,6 +196,7 @@ namespace SoulForge.Editor
             so.FindProperty("<AccentColor>k__BackingField").colorValue = accentColor;
             so.FindProperty("<Damage>k__BackingField").floatValue = damage;
             so.FindProperty("<FireRate>k__BackingField").floatValue = fireRate;
+            so.FindProperty("<AttackRange>k__BackingField").floatValue = attackRange;
             so.FindProperty("<ProjectileSpeed>k__BackingField").floatValue = projectileSpeed;
             so.ApplyModifiedPropertiesWithoutUndo();
         }
@@ -255,6 +256,7 @@ namespace SoulForge.Editor
             float cooldown,
             int budgetCost,
             string targetId,
+            bool requiresWorldTarget,
             float healAmount,
             Color accentColor)
         {
@@ -267,6 +269,7 @@ namespace SoulForge.Editor
             so.FindProperty("<Cooldown>k__BackingField").floatValue = cooldown;
             so.FindProperty("<BudgetCost>k__BackingField").intValue = budgetCost;
             so.FindProperty("<TargetId>k__BackingField").stringValue = targetId;
+            so.FindProperty("<RequiresWorldTarget>k__BackingField").boolValue = requiresWorldTarget;
             so.FindProperty("<HealAmount>k__BackingField").floatValue = healAmount;
             so.FindProperty("<AccentColor>k__BackingField").colorValue = accentColor;
             so.ApplyModifiedPropertiesWithoutUndo();

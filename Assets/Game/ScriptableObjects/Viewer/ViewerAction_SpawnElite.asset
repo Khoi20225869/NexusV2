@@ -20,5 +20,6 @@ MonoBehaviour:
   <Cooldown>k__BackingField: 12
   <BudgetCost>k__BackingField: 3
   <TargetId>k__BackingField: elite_spawn
+  <RequiresWorldTarget>k__BackingField: 1
   <HealAmount>k__BackingField: 0
   <AccentColor>k__BackingField: {r: 0.92, g: 0.54, b: 0.16, a: 1}

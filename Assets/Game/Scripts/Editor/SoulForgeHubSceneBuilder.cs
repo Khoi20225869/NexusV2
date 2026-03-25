@@ -20,31 +20,86 @@ namespace SoulForge.Editor
         public static void CreateHubScene()
         {
             SoulForgePrototypeAssetCreator.CreatePrototypeAssets();
+            string scenePath = "Assets/Game/Scenes/Hub.unity";
 
-            Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-            scene.name = "Hub";
-
-            CreateCamera();
-            CreateEventSystem();
-            CreateHostSession();
-            Transform canvasRoot = CreateCanvas();
-            HeroDefinition baseHero = AssetDatabase.LoadAssetAtPath<HeroDefinition>("Assets/Game/ScriptableObjects/Heroes/Hero_Default.asset");
-            if (baseHero == null)
+            Scene scene;
+            if (System.IO.File.Exists(scenePath))
             {
-                baseHero = AssetDatabase.LoadAssetAtPath<HeroDefinition>("Assets/Game/ScriptableObjects/Heroes/Hero_Knight.asset");
+                scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
+            }
+            else
+            {
+                scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+                scene.name = "Hub";
+
+                CreateCamera();
+                CreateEventSystem();
+                CreateHostSession();
+                Transform canvasRoot = CreateCanvas();
+                HeroDefinition baseHero = AssetDatabase.LoadAssetAtPath<HeroDefinition>("Assets/Game/ScriptableObjects/Heroes/Hero_Default.asset");
+                if (baseHero == null)
+                {
+                    baseHero = AssetDatabase.LoadAssetAtPath<HeroDefinition>("Assets/Game/ScriptableObjects/Heroes/Hero_Knight.asset");
+                }
+
+                HubHeroPreviewController preview = CreateHeroPreview(baseHero);
+                CreateCustomizerPanel(canvasRoot, baseHero, preview);
             }
 
-            HubHeroPreviewController preview = CreateHeroPreview(baseHero);
-            HubShopController shopController = CreateShopPanel(canvasRoot);
-            CreateBlacksmithAltar(shopController);
-            CreateCustomizerPanel(canvasRoot, baseHero, preview);
-
-            string scenePath = "Assets/Game/Scenes/Hub.unity";
+            EnsureHubCoreObjects();
             EditorSceneManager.SaveScene(scene, scenePath);
             AddSceneToBuildSettings(scenePath);
             AssetDatabase.Refresh();
             EditorGUIUtility.PingObject(AssetDatabase.LoadAssetAtPath<SceneAsset>(scenePath));
-            Debug.Log("Hub baseline scene created.");
+            Debug.Log("Hub scene synced from current layout.");
+        }
+
+        private static void EnsureHubCoreObjects()
+        {
+            if (Object.FindFirstObjectByType<Camera>() == null)
+            {
+                CreateCamera();
+            }
+
+            if (Object.FindFirstObjectByType<EventSystem>() == null)
+            {
+                CreateEventSystem();
+            }
+
+            if (Object.FindFirstObjectByType<ViewerSessionService>() == null || Object.FindFirstObjectByType<HostViewerWebSocketServer>() == null)
+            {
+                GameObject existing = GameObject.Find("HostSession");
+                if (existing == null)
+                {
+                    CreateHostSession();
+                }
+                else
+                {
+                    if (existing.GetComponent<ViewerSessionService>() == null)
+                    {
+                        existing.AddComponent<ViewerSessionService>();
+                    }
+
+                    if (existing.GetComponent<HostViewerWebSocketServer>() == null)
+                    {
+                        existing.AddComponent<HostViewerWebSocketServer>();
+                    }
+                }
+            }
+
+            Canvas canvas = Object.FindFirstObjectByType<Canvas>();
+            if (canvas != null)
+            {
+                Camera mainCamera = Object.FindFirstObjectByType<Camera>();
+                canvas.renderMode = RenderMode.ScreenSpaceCamera;
+                canvas.worldCamera = mainCamera;
+
+                RectTransform canvasRect = canvas.GetComponent<RectTransform>();
+                if (canvasRect != null)
+                {
+                    canvasRect.localScale = Vector3.one;
+                }
+            }
         }
 
         private static void CreateHostSession()
@@ -76,7 +131,8 @@ namespace SoulForge.Editor
         {
             GameObject canvasObject = new("UIRoot");
             Canvas canvas = canvasObject.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.renderMode = RenderMode.ScreenSpaceCamera;
+            canvas.worldCamera = Object.FindFirstObjectByType<Camera>();
             RectTransform canvasRect = canvasObject.GetComponent<RectTransform>();
             canvasRect.localScale = Vector3.one;
             canvasRect.anchorMin = Vector2.zero;
@@ -137,64 +193,6 @@ namespace SoulForge.Editor
             actor.transform.localScale = Vector3.one * uniformScale;
         }
 
-        private static HubShopController CreateShopPanel(Transform canvasRoot)
-        {
-            GameObject panel = new("ShopPanel");
-            panel.transform.SetParent(canvasRoot, false);
-            RectTransform rect = panel.AddComponent<RectTransform>();
-            rect.anchorMin = new Vector2(1f, 0.5f);
-            rect.anchorMax = new Vector2(1f, 0.5f);
-            rect.pivot = new Vector2(1f, 0.5f);
-            rect.anchoredPosition = new Vector2(-38f, -18f);
-            rect.sizeDelta = new Vector2(340f, 420f);
-
-            Image background = panel.AddComponent<Image>();
-            background.color = new Color(0.11f, 0.085f, 0.05f, 0.95f);
-            Outline outline = panel.AddComponent<Outline>();
-            outline.effectColor = new Color(1f, 0.78f, 0.42f, 0.34f);
-            outline.effectDistance = new Vector2(3f, -3f);
-
-            HubShopController controller = panel.AddComponent<HubShopController>();
-            WeaponDefinition pistol = AssetDatabase.LoadAssetAtPath<WeaponDefinition>("Assets/Game/ScriptableObjects/Weapons/Weapon_Pistol.asset");
-            WeaponDefinition shotgun = AssetDatabase.LoadAssetAtPath<WeaponDefinition>("Assets/Game/ScriptableObjects/Weapons/Weapon_Shotgun.asset");
-            WeaponDefinition staff = AssetDatabase.LoadAssetAtPath<WeaponDefinition>("Assets/Game/ScriptableObjects/Weapons/Weapon_ViewerDrop.asset");
-
-            CreateTopLeftText("ShopTitle", panel.transform, new Vector2(18f, -18f), "Blacksmith Altar", 26, FontStyles.Bold);
-            GameObject wallet = CreateTopLeftText("WalletText", panel.transform, new Vector2(18f, -58f), "Crowns: 120", 18);
-            GameObject selected = CreateTopLeftText("SelectedLoadoutText", panel.transform, new Vector2(18f, -88f), "Shop Loadout: Default", 15);
-            GameObject hint = CreateTopLeftText("ShopHintText", panel.transform, new Vector2(18f, -118f), "Approach the altar or click it to browse weapons.", 14);
-            hint.GetComponent<TMP_Text>().color = new Color(1f, 0.86f, 0.56f, 1f);
-            Button closeButton = CreateActionButton("CloseShopButton", panel.transform, new Vector2(126f, -16f), "Close", new Vector2(84f, 34f), 16);
-
-            SerializedObject so = new(controller);
-            so.FindProperty("root").objectReferenceValue = panel;
-            so.FindProperty("walletText").objectReferenceValue = wallet.GetComponent<TMP_Text>();
-            so.FindProperty("selectedText").objectReferenceValue = selected.GetComponent<TMP_Text>();
-            so.FindProperty("hintText").objectReferenceValue = hint.GetComponent<TMP_Text>();
-            so.FindProperty("closeButton").objectReferenceValue = closeButton;
-            so.FindProperty("items").arraySize = 3;
-
-            WeaponDefinition[] weapons = { pistol, shotgun, staff };
-            for (int i = 0; i < weapons.Length; i++)
-            {
-                Button button = CreateActionButton($"ShopButton_{i + 1}", panel.transform, new Vector2(0f, -182f - i * 76f), weapons[i] != null ? weapons[i].DisplayName : "Item", new Vector2(286f, 58f), 22);
-                GameObject subtitle = CreateChildText($"{button.name}_Subtitle", button.transform, new Vector2(0f, -12f), new Vector2(230f, 22f), weapons[i] != null ? weapons[i].Rarity.ToString() : "Common", 14, TextAlignmentOptions.Center);
-                subtitle.GetComponent<TMP_Text>().color = weapons[i] != null ? WeaponRarityPalette.GetColor(weapons[i].Rarity) : Color.white;
-                GameObject price = CreateChildText($"{button.name}_Price", button.transform, new Vector2(0f, 18f), new Vector2(230f, 20f), $"{(weapons[i] != null ? weapons[i].ShopPrice : 0)} C", 13, TextAlignmentOptions.Center);
-
-                SerializedProperty item = so.FindProperty("items").GetArrayElementAtIndex(i);
-                item.FindPropertyRelative("Button").objectReferenceValue = button;
-                item.FindPropertyRelative("Frame").objectReferenceValue = button.GetComponent<Image>();
-                item.FindPropertyRelative("Label").objectReferenceValue = button.transform.Find($"{button.name}_Text")?.GetComponent<TMP_Text>();
-                item.FindPropertyRelative("Price").objectReferenceValue = price.GetComponent<TMP_Text>();
-                item.FindPropertyRelative("Weapon").objectReferenceValue = weapons[i];
-                item.FindPropertyRelative("Cost").intValue = weapons[i] != null ? weapons[i].ShopPrice : 0;
-            }
-
-            so.ApplyModifiedPropertiesWithoutUndo();
-            return controller;
-        }
-
         private static void CreateCustomizerPanel(Transform canvasRoot, HeroDefinition baseHero, HubHeroPreviewController preview)
         {
             GameObject panel = new("HubPanel");
@@ -210,6 +208,7 @@ namespace SoulForge.Editor
             background.sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
             background.type = Image.Type.Sliced;
             background.color = new Color(0.06f, 0.09f, 0.14f, 0.84f);
+            background.raycastTarget = false;
             Outline outline = panel.AddComponent<Outline>();
             outline.effectColor = new Color(0.75f, 0.88f, 1f, 0.12f);
             outline.effectDistance = new Vector2(4f, -4f);
@@ -255,52 +254,6 @@ namespace SoulForge.Editor
             controllerSo.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        private static void CreateBlacksmithAltar(HubShopController shopController)
-        {
-            GameObject altarRoot = new("BlacksmithAltar");
-            altarRoot.transform.position = new Vector3(5.8f, -1.2f, 0f);
-
-            Sprite sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
-
-            GameObject baseObject = new("Base");
-            baseObject.transform.SetParent(altarRoot.transform, false);
-            SpriteRenderer baseRenderer = baseObject.AddComponent<SpriteRenderer>();
-            baseRenderer.sprite = sprite;
-            baseRenderer.color = new Color(0.24f, 0.21f, 0.19f, 1f);
-            baseObject.transform.localScale = new Vector3(1.7f, 0.55f, 1f);
-
-            GameObject coreObject = new("Core");
-            coreObject.transform.SetParent(altarRoot.transform, false);
-            coreObject.transform.localPosition = new Vector3(0f, 0.52f, 0f);
-            SpriteRenderer coreRenderer = coreObject.AddComponent<SpriteRenderer>();
-            coreRenderer.sprite = sprite;
-            coreRenderer.color = new Color(0.4f, 0.32f, 0.24f, 1f);
-            coreObject.transform.localScale = new Vector3(1.05f, 1.2f, 1f);
-            coreRenderer.sortingOrder = 1;
-
-            BoxCollider2D collider = altarRoot.AddComponent<BoxCollider2D>();
-            collider.size = new Vector2(1.55f, 1.8f);
-            collider.offset = new Vector2(0f, 0.38f);
-            collider.isTrigger = true;
-
-            BlacksmithAltarInteractor interactor = altarRoot.AddComponent<BlacksmithAltarInteractor>();
-
-            GameObject promptObject = new("PromptText");
-            promptObject.transform.SetParent(altarRoot.transform, false);
-            promptObject.transform.localPosition = new Vector3(0f, 1.55f, 0f);
-            TextMeshPro prompt = promptObject.AddComponent<TextMeshPro>();
-            prompt.alignment = TextAlignmentOptions.Center;
-            prompt.fontSize = 4.2f;
-            prompt.text = "Click altar to open forge";
-            prompt.color = new Color(1f, 0.86f, 0.58f, 1f);
-
-            SerializedObject so = new(interactor);
-            so.FindProperty("shopController").objectReferenceValue = shopController;
-            so.FindProperty("promptText").objectReferenceValue = prompt;
-            so.FindProperty("altarRenderer").objectReferenceValue = coreRenderer;
-            so.ApplyModifiedPropertiesWithoutUndo();
-        }
-
         private static GameObject CreateTopLeftText(string name, Transform parent, Vector2 anchoredPosition, string text, float fontSize, FontStyles style = FontStyles.Normal)
         {
             GameObject textObject = new(name);
@@ -318,6 +271,7 @@ namespace SoulForge.Editor
             tmp.fontStyle = style;
             tmp.alignment = TextAlignmentOptions.Left;
             tmp.color = Color.white;
+            tmp.raycastTarget = false;
             return textObject;
         }
 
@@ -338,6 +292,7 @@ namespace SoulForge.Editor
             tmp.fontStyle = style;
             tmp.alignment = TextAlignmentOptions.Center;
             tmp.color = Color.white;
+            tmp.raycastTarget = false;
             return textObject;
         }
 
@@ -357,6 +312,7 @@ namespace SoulForge.Editor
             tmp.fontSize = fontSize;
             tmp.alignment = alignment;
             tmp.color = Color.white;
+            tmp.raycastTarget = false;
             return textObject;
         }
 
@@ -447,6 +403,7 @@ namespace SoulForge.Editor
             tmp.fontSize = fontSize;
             tmp.alignment = alignment;
             tmp.color = Color.white;
+            tmp.raycastTarget = false;
             return textObject;
         }
 
@@ -461,25 +418,8 @@ namespace SoulForge.Editor
 
         private static void AddSceneToBuildSettings(string scenePath)
         {
-            const string hubScenePath = "Assets/Game/Scenes/Hub.unity";
-            const string runScenePath = "Assets/Game/Scenes/Run_Prototype.unity";
-            var orderedScenes = new System.Collections.Generic.List<EditorBuildSettingsScene>();
-            if (System.IO.File.Exists(hubScenePath))
-            {
-                orderedScenes.Add(new EditorBuildSettingsScene(hubScenePath, true));
-            }
-
-            if (System.IO.File.Exists(runScenePath))
-            {
-                orderedScenes.Add(new EditorBuildSettingsScene(runScenePath, true));
-            }
-
-            if (!orderedScenes.Exists(scene => scene.path == scenePath))
-            {
-                orderedScenes.Add(new EditorBuildSettingsScene(scenePath, true));
-            }
-
-            EditorBuildSettings.scenes = orderedScenes.ToArray();
+            _ = scenePath;
+            SoulForgeBoosterSceneBuilder.AddSceneToBuildSettings();
         }
     }
 }

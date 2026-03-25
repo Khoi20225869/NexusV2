@@ -14,11 +14,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SoulForge.Data.ViewerActionDefinition
   <ActionId>k__BackingField: drop_random_weapon
   <DisplayName>k__BackingField: Forge Weapon
-  <Description>k__BackingField: Drop a funded weapon for the host inventory.
+  <Description>k__BackingField: Drop a funded weapon pickup onto the floor.
   <Category>k__BackingField: 1
   <Price>k__BackingField: 55
   <Cooldown>k__BackingField: 10
   <BudgetCost>k__BackingField: 2
   <TargetId>k__BackingField: 
+  <RequiresWorldTarget>k__BackingField: 1
   <HealAmount>k__BackingField: 0
   <AccentColor>k__BackingField: {r: 0.34, g: 0.58, b: 0.95, a: 1}

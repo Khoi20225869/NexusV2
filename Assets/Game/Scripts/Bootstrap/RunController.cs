@@ -2,41 +2,45 @@ using System.Collections.Generic;
 using SoulForge.Rooms;
 using SoulForge.Player;
 using SoulForge.Viewer;
+using SoulForge.Enemies;
 using System;
 using UnityEngine;
 using UnityEngine.Events;
+using UnityEngine.SceneManagement;
 
 namespace SoulForge.Bootstrap
 {
     public sealed class RunController : MonoBehaviour
     {
         [SerializeField] private List<RoomController> roomSequence = new();
+        [SerializeField] private int floorCount = 3;
         [SerializeField] private StateBroadcaster stateBroadcaster;
         [SerializeField] private PlayerHealth playerHealth;
         [SerializeField] private ViewerActionQueue viewerActionQueue;
         [SerializeField] private ViewerRoomBudgetService viewerRoomBudgetService;
+        [SerializeField] private float spectatorRefreshInterval = 0.1f;
         [SerializeField] private UnityEvent onRunStarted;
         [SerializeField] private UnityEvent onRunCompleted;
-
-        private int roomIndex;
 
         public event Action RunStarted;
         public event Action RunCompleted;
         public event Action<RoomController> RoomChanged;
 
         public RoomController CurrentRoom { get; private set; }
-        public int RoomIndex => roomIndex;
-        public int RoomCount => roomSequence.Count;
+        public int RoomIndex => Mathf.Max(0, FloorIndex);
+        public int RoomCount => floorCount;
+        public int FloorIndex { get; private set; }
+        public int FloorCount => floorCount;
+        public int TotalAliveEnemyCount { get; private set; }
+        public string CurrentPhase => TotalAliveEnemyCount > 0 ? "combat" : "explore";
+
+        private float spectatorRefreshTimer;
 
         private void Start()
         {
             if (roomSequence.Count == 0)
             {
-                RoomController firstRoom = FindFirstObjectByType<RoomController>();
-                if (firstRoom != null)
-                {
-                    roomSequence.Add(firstRoom);
-                }
+                roomSequence.AddRange(FindObjectsByType<RoomController>(FindObjectsSortMode.None));
             }
 
             if (playerHealth == null)
@@ -55,10 +59,23 @@ namespace SoulForge.Bootstrap
             }
 
             CurrentRoom = roomSequence.Count > 0 ? roomSequence[0] : null;
-            roomIndex = 0;
+            FloorIndex = ResolveFloorIndex();
+            RefreshEnemyCount();
             onRunStarted?.Invoke();
             RunStarted?.Invoke();
             BroadcastSnapshot();
+        }
+
+        private void Update()
+        {
+            spectatorRefreshTimer -= Time.deltaTime;
+            if (spectatorRefreshTimer > 0f)
+            {
+                return;
+            }
+
+            spectatorRefreshTimer = Mathf.Max(0.05f, spectatorRefreshInterval);
+            BroadcastDelta("spectator_refresh");
         }
 
         public void SetCurrentRoom(RoomController room)
@@ -69,16 +86,7 @@ namespace SoulForge.Bootstrap
             }
 
             CurrentRoom = room;
-            roomIndex = roomSequence.IndexOf(room);
-            if (roomIndex < 0)
-            {
-                roomSequence.Add(room);
-                roomIndex = roomSequence.Count - 1;
-            }
-
-            viewerRoomBudgetService?.ResetBudget();
             RoomChanged?.Invoke(CurrentRoom);
-            BroadcastDelta("room_changed");
         }
 
         public void CompleteRun()
@@ -90,14 +98,7 @@ namespace SoulForge.Bootstrap
 
         public void AdvanceToNextRoom()
         {
-            int nextIndex = roomIndex + 1;
-            if (nextIndex >= roomSequence.Count)
-            {
-                CompleteRun();
-                return;
-            }
-
-            SetCurrentRoom(roomSequence[nextIndex]);
+            CompleteRun();
         }
 
         public void EnterRoom(RoomController room)
@@ -112,12 +113,8 @@ namespace SoulForge.Bootstrap
 
         public bool IsLastRoom(RoomController room)
         {
-            if (room == null || roomSequence.Count == 0)
-            {
-                return false;
-            }
-
-            return roomSequence[roomSequence.Count - 1] == room;
+            _ = room;
+            return true;
         }
 
         private void BroadcastSnapshot()
@@ -127,16 +124,20 @@ namespace SoulForge.Bootstrap
                 return;
             }
 
+            RefreshEnemyCount();
             ViewerSessionSnapshot snapshot = new()
             {
                 SessionId = "local-session",
-                RoomIndex = roomIndex,
-                RoomPhase = CurrentRoom != null && CurrentRoom.IsLocked ? "combat" : "reward",
+                RoomIndex = FloorIndex,
+                RoomPhase = CurrentPhase,
                 HostHp = playerHealth != null ? playerHealth.CurrentHealth : 0f,
                 HostShield = playerHealth != null ? playerHealth.MaxShield : 0f,
-                AliveEnemyCount = CurrentRoom != null ? CurrentRoom.ActiveEnemyCount : 0,
+                AliveEnemyCount = TotalAliveEnemyCount,
                 QueueCount = viewerActionQueue != null ? viewerActionQueue.Count : 0,
-                RoomBudget = viewerRoomBudgetService != null ? viewerRoomBudgetService.CurrentBudget : 0
+                RoomBudget = viewerRoomBudgetService != null ? viewerRoomBudgetService.CurrentBudget : 0,
+                PlayerMarker = BuildMarker("player", "player", playerHealth != null ? playerHealth.transform : null),
+                TargetMarker = BuildMarker("target", "target", FindFirstObjectByType<RunFinishGate>()?.transform),
+                EnemyMarkers = BuildEnemyMarkers()
             };
 
             stateBroadcaster.BroadcastSnapshot(snapshot);
@@ -149,17 +150,83 @@ namespace SoulForge.Bootstrap
                 return;
             }
 
+            RefreshEnemyCount();
             ViewerSessionDelta delta = new()
             {
                 EventType = reason,
-                RoomPhase = CurrentRoom != null && CurrentRoom.IsLocked ? "combat" : "reward",
+                RoomPhase = CurrentPhase,
                 HostHp = playerHealth != null ? playerHealth.CurrentHealth : 0f,
-                AliveEnemyCount = CurrentRoom != null ? CurrentRoom.ActiveEnemyCount : 0,
+                AliveEnemyCount = TotalAliveEnemyCount,
                 QueueCount = viewerActionQueue != null ? viewerActionQueue.Count : 0,
-                RoomBudget = viewerRoomBudgetService != null ? viewerRoomBudgetService.CurrentBudget : 0
+                RoomBudget = viewerRoomBudgetService != null ? viewerRoomBudgetService.CurrentBudget : 0,
+                PlayerMarker = BuildMarker("player", "player", playerHealth != null ? playerHealth.transform : null),
+                TargetMarker = BuildMarker("target", "target", FindFirstObjectByType<RunFinishGate>()?.transform),
+                EnemyMarkers = BuildEnemyMarkers()
             };
 
             stateBroadcaster.BroadcastDelta(delta);
+        }
+
+        private void RefreshEnemyCount()
+        {
+            int total = 0;
+            for (int i = 0; i < roomSequence.Count; i++)
+            {
+                if (roomSequence[i] != null)
+                {
+                    total += roomSequence[i].ActiveEnemyCount;
+                }
+            }
+
+            TotalAliveEnemyCount = total;
+        }
+
+        private static int ResolveFloorIndex()
+        {
+            string sceneName = SceneManager.GetActiveScene().name;
+            if (sceneName.StartsWith("Floor_", StringComparison.OrdinalIgnoreCase) &&
+                int.TryParse(sceneName.Substring("Floor_".Length), out int parsed))
+            {
+                return parsed;
+            }
+
+            return 1;
+        }
+
+        private static ViewerViewportMarkerState BuildMarker(string id, string kind, Transform target)
+        {
+            Camera camera = Camera.main;
+            if (camera == null || target == null)
+            {
+                return new ViewerViewportMarkerState { Id = id, Kind = kind, Visible = false };
+            }
+
+            Vector3 viewport = camera.WorldToViewportPoint(target.position);
+            return new ViewerViewportMarkerState
+            {
+                Id = id,
+                Kind = kind,
+                ViewportX = Mathf.Clamp01(viewport.x),
+                ViewportY = Mathf.Clamp01(viewport.y),
+                Visible = viewport.z >= 0f && viewport.x >= 0f && viewport.x <= 1f && viewport.y >= 0f && viewport.y <= 1f
+            };
+        }
+
+        private static ViewerViewportMarkerState[] BuildEnemyMarkers()
+        {
+            EnemyController[] enemies = FindObjectsByType<EnemyController>(FindObjectsSortMode.None);
+            if (enemies == null || enemies.Length == 0)
+            {
+                return Array.Empty<ViewerViewportMarkerState>();
+            }
+
+            ViewerViewportMarkerState[] markers = new ViewerViewportMarkerState[enemies.Length];
+            for (int i = 0; i < enemies.Length; i++)
+            {
+                markers[i] = BuildMarker($"enemy_{i:00}", "enemy", enemies[i] != null ? enemies[i].transform : null);
+            }
+
+            return markers;
         }
     }
 }

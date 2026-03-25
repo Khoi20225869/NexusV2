@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: Weapon_ViewerDrop
   m_EditorClassIdentifier: Assembly-CSharp::SoulForge.Data.WeaponDefinition
   <WeaponId>k__BackingField: weapon_viewer_drop
-  <DisplayName>k__BackingField: Arc Staff
-  <Description>k__BackingField: Viewer-funded energy weapon.
+  <DisplayName>k__BackingField: Arc Spear
+  <Description>k__BackingField: Charged polearm with long melee reach.
   <Rarity>k__BackingField: 2
   <MinRoomTier>k__BackingField: 2
   <MaxRoomTier>k__BackingField: 2
@@ -22,5 +22,6 @@ MonoBehaviour:
   <ChestWeight>k__BackingField: 4
   <AccentColor>k__BackingField: {r: 0.98, g: 0.58, b: 1, a: 1}
   <Damage>k__BackingField: 1.5
-  <FireRate>k__BackingField: 2.5
-  <ProjectileSpeed>k__BackingField: 13
+  <FireRate>k__BackingField: 1.8
+  <AttackRange>k__BackingField: 1.7
+  <ProjectileSpeed>k__BackingField: 0

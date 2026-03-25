@@ -1,5 +1,4 @@
 using SoulForge.Data;
-using SoulForge.Economy;
 using SoulForge.Viewer;
 using TMPro;
 using UnityEngine;
@@ -9,42 +8,13 @@ namespace SoulForge.UI
     public sealed class ViewerStorePresenter : MonoBehaviour
     {
         [SerializeField] private ViewerStoreCatalog storeCatalog;
-        [SerializeField] private ViewerActionExecutor actionExecutor;
-        [SerializeField] private ViewerActionValidator actionValidator;
-        [SerializeField] private ViewerEconomyService economyService;
-        [SerializeField] private ViewerRoomBudgetService roomBudgetService;
-        [SerializeField] private LocalViewerCommandTester localViewerCommandTester;
         [SerializeField] private ViewerWebSocketClient remoteViewerClient;
+        [SerializeField] private ViewerTargetingController targetingController;
         [SerializeField] private ViewerStoreButton[] actionButtons;
         [SerializeField] private TMP_Text headerText;
 
         private void Awake()
         {
-            if (actionExecutor == null)
-            {
-                actionExecutor = FindFirstObjectByType<ViewerActionExecutor>();
-            }
-
-            if (actionValidator == null)
-            {
-                actionValidator = FindFirstObjectByType<ViewerActionValidator>();
-            }
-
-            if (economyService == null)
-            {
-                economyService = FindFirstObjectByType<ViewerEconomyService>();
-            }
-
-            if (roomBudgetService == null)
-            {
-                roomBudgetService = FindFirstObjectByType<ViewerRoomBudgetService>();
-            }
-
-            if (localViewerCommandTester == null)
-            {
-                localViewerCommandTester = FindFirstObjectByType<LocalViewerCommandTester>();
-            }
-
             if (remoteViewerClient == null)
             {
                 remoteViewerClient = FindFirstObjectByType<ViewerWebSocketClient>();
@@ -88,12 +58,8 @@ namespace SoulForge.UI
 
                 button.Setup(
                     storeCatalog.Actions[i],
-                    actionExecutor,
-                    actionValidator,
-                    economyService,
-                    roomBudgetService,
-                    localViewerCommandTester,
-                    remoteViewerClient);
+                    remoteViewerClient,
+                    targetingController);
             }
         }
     }

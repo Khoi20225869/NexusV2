@@ -8,7 +8,6 @@ namespace SoulForge.Bootstrap
     public sealed class CharacterSelectionController : MonoBehaviour
     {
         [SerializeField] private HeroRosterDefinition heroRoster;
-        [SerializeField] private CharacterSelectPresenter presenter;
         [SerializeField] private PlayerController playerController;
         [SerializeField] private PlayerAim playerAim;
         [SerializeField] private PlayerHealth playerHealth;
@@ -21,11 +20,6 @@ namespace SoulForge.Bootstrap
 
         private void Awake()
         {
-            if (presenter == null)
-            {
-                presenter = FindFirstObjectByType<CharacterSelectPresenter>(FindObjectsInactive.Include);
-            }
-
             if (playerController == null)
             {
                 playerController = FindFirstObjectByType<PlayerController>();
@@ -66,14 +60,13 @@ namespace SoulForge.Bootstrap
 
         private void Start()
         {
-            if (RunSessionState.HasHeroSelection)
+            HeroDefinition heroDefinition = ResolveInitialHero();
+            if (heroDefinition == null)
             {
-                SelectHero(RunSessionState.SelectedHero);
                 return;
             }
 
-            Time.timeScale = 0f;
-            presenter?.Show(heroRoster, SelectHero);
+            SelectHero(heroDefinition);
         }
 
         public void SelectHero(HeroDefinition heroDefinition)
@@ -90,10 +83,33 @@ namespace SoulForge.Bootstrap
             characterView?.ApplyAppearance(RunSessionState.AppearanceSelection);
             playerInventory?.InitializeHero(heroDefinition);
             resultScreenPresenter?.Hide();
-
-            presenter?.Hide();
             SetGameplayEnabled(true);
             Time.timeScale = 1f;
+        }
+
+        private HeroDefinition ResolveInitialHero()
+        {
+            if (RunSessionState.HasHeroSelection)
+            {
+                return RunSessionState.SelectedHero;
+            }
+
+            HeroDefinition fallbackHero = heroRoster != null && heroRoster.Heroes.Count > 0
+                ? heroRoster.Heroes[0]
+                : null;
+
+            if (RunSessionState.TryRestoreSavedProfile(heroRoster, fallbackHero))
+            {
+                return RunSessionState.SelectedHero;
+            }
+
+            if (fallbackHero != null)
+            {
+                RunSessionState.SelectHero(fallbackHero);
+                return fallbackHero;
+            }
+
+            return null;
         }
 
         private void SetGameplayEnabled(bool isEnabled)

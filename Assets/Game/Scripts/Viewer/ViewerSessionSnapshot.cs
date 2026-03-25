@@ -15,5 +15,8 @@ namespace SoulForge.Viewer
         public int QueueCount;
         public int RoomBudget;
         public int ViewerBalance;
+        public ViewerViewportMarkerState PlayerMarker;
+        public ViewerViewportMarkerState TargetMarker;
+        public ViewerViewportMarkerState[] EnemyMarkers;
     }
 }

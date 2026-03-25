@@ -20,5 +20,6 @@ MonoBehaviour:
   <Cooldown>k__BackingField: 4
   <BudgetCost>k__BackingField: 1
   <TargetId>k__BackingField: weak_spawn
+  <RequiresWorldTarget>k__BackingField: 1
   <HealAmount>k__BackingField: 0
   <AccentColor>k__BackingField: {r: 0.85, g: 0.34, b: 0.34, a: 1}

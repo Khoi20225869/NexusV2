@@ -16,6 +16,7 @@ namespace SoulForge.Data
         [field: SerializeField] public Color AccentColor { get; private set; } = Color.white;
         [field: SerializeField] public float Damage { get; private set; } = 1f;
         [field: SerializeField] public float FireRate { get; private set; } = 4f;
+        [field: SerializeField] public float AttackRange { get; private set; } = 1.3f;
         [field: SerializeField] public float ProjectileSpeed { get; private set; } = 14f;
     }
 }

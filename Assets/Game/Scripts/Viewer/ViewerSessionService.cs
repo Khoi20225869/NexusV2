@@ -4,6 +4,8 @@ namespace SoulForge.Viewer
 {
     public sealed class ViewerSessionService : MonoBehaviour
     {
+        private static ViewerSessionService instance;
+
         [SerializeField] private string sessionId = "";
         [SerializeField] private bool autoCopyToClipboard = true;
 
@@ -22,8 +24,24 @@ namespace SoulForge.Viewer
 
         private void Awake()
         {
+            if (instance != null && instance != this)
+            {
+                Destroy(this);
+                return;
+            }
+
+            instance = this;
+            DontDestroyOnLoad(gameObject);
             _ = SessionId;
             CopySessionCodeIfEnabled();
+        }
+
+        private void OnDestroy()
+        {
+            if (instance == this)
+            {
+                instance = null;
+            }
         }
 
         [ContextMenu("Regenerate Session Code")]

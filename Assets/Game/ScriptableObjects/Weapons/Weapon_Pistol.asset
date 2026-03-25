@@ -13,12 +13,13 @@ MonoBehaviour:
   m_Name: Weapon_Pistol
   m_EditorClassIdentifier: Assembly-CSharp::SoulForge.Data.WeaponDefinition
   <WeaponId>k__BackingField: weapon_pistol
-  <DisplayName>k__BackingField: Pulse Pistol
-  <Description>k__BackingField: Balanced automatic sidearm.
+  <DisplayName>k__BackingField: Iron Saber
+  <Description>k__BackingField: Balanced melee blade with quick swings.
   <Rarity>k__BackingField: 0
   <ShopPrice>k__BackingField: 25
   <ChestWeight>k__BackingField: 12
   <AccentColor>k__BackingField: {r: 0.64, g: 0.88, b: 1, a: 1}
   <Damage>k__BackingField: 1
-  <FireRate>k__BackingField: 4
-  <ProjectileSpeed>k__BackingField: 14
+  <FireRate>k__BackingField: 2.4
+  <AttackRange>k__BackingField: 1.2
+  <ProjectileSpeed>k__BackingField: 0

@@ -12,8 +12,11 @@ namespace SoulForge.Editor
         {
             Build(new[]
             {
+                "Assets/Game/Scenes/Booster.unity",
                 "Assets/Game/Scenes/Hub.unity",
-                "Assets/Game/Scenes/Run_Prototype.unity"
+                "Assets/Game/Scenes/Floor_01.unity",
+                "Assets/Game/Scenes/Floor_02.unity",
+                "Assets/Game/Scenes/Floor_03.unity"
             }, "Builds/Host/SoulForgeHost.exe");
         }
 
@@ -22,7 +25,8 @@ namespace SoulForge.Editor
         {
             Build(new[]
             {
-                "Assets/Game/Scenes/Viewer_Client.unity"
+                "Assets/Game/Scenes/Viewer_Client.unity",
+                "Assets/Game/Scenes/Viewer_Live.unity"
             }, "Builds/Viewer/SoulForgeViewer.exe");
         }
 

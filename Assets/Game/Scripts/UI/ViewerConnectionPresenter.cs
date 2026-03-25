@@ -11,11 +11,7 @@ namespace SoulForge.UI
         [SerializeField] private TMP_InputField hostIpInput;
         [SerializeField] private TMP_InputField sessionCodeInput;
         [SerializeField] private Button connectButton;
-        [SerializeField] private Button disconnectButton;
-        [SerializeField] private Button reconnectButton;
         [SerializeField] private TMP_Text statusText;
-        [SerializeField] private TMP_Text viewerIdText;
-        [SerializeField] private TMP_Text recentSessionsText;
 
         private void Awake()
         {
@@ -30,16 +26,6 @@ namespace SoulForge.UI
             if (connectButton != null)
             {
                 connectButton.onClick.AddListener(Connect);
-            }
-
-            if (disconnectButton != null)
-            {
-                disconnectButton.onClick.AddListener(Disconnect);
-            }
-
-            if (reconnectButton != null)
-            {
-                reconnectButton.onClick.AddListener(Reconnect);
             }
 
             if (hostIpInput != null)
@@ -66,16 +52,6 @@ namespace SoulForge.UI
             if (connectButton != null)
             {
                 connectButton.onClick.RemoveListener(Connect);
-            }
-
-            if (disconnectButton != null)
-            {
-                disconnectButton.onClick.RemoveListener(Disconnect);
-            }
-
-            if (reconnectButton != null)
-            {
-                reconnectButton.onClick.RemoveListener(Reconnect);
             }
 
             if (hostIpInput != null)
@@ -116,18 +92,6 @@ namespace SoulForge.UI
             RefreshUi();
         }
 
-        private void Disconnect()
-        {
-            viewerWebSocketClient?.Disconnect();
-            RefreshUi();
-        }
-
-        private void Reconnect()
-        {
-            viewerWebSocketClient?.ReconnectLast();
-            RefreshUi();
-        }
-
         private void OnHostIpEdited(string value)
         {
             viewerWebSocketClient?.SetHostIp(value);
@@ -140,7 +104,7 @@ namespace SoulForge.UI
             RefreshUi();
         }
 
-        private void OnConnectionStateChanged(bool isConnected)
+        private void OnConnectionStateChanged(bool _)
         {
             RefreshUi();
         }
@@ -172,30 +136,10 @@ namespace SoulForge.UI
                 sessionCodeInput.text = viewerWebSocketClient.SessionCode;
             }
 
-            if (viewerIdText != null)
-            {
-                viewerIdText.text = $"Viewer ID: {viewerWebSocketClient.ViewerId}";
-            }
-
-            if (recentSessionsText != null)
-            {
-                recentSessionsText.text = viewerWebSocketClient.GetRecentSessionsDisplay();
-            }
-
             bool isConnected = viewerWebSocketClient.IsConnected;
             if (connectButton != null)
             {
                 connectButton.interactable = !isConnected;
-            }
-
-            if (disconnectButton != null)
-            {
-                disconnectButton.interactable = isConnected;
-            }
-
-            if (reconnectButton != null)
-            {
-                reconnectButton.interactable = !isConnected && !string.IsNullOrWhiteSpace(viewerWebSocketClient.LastSuccessfulSession);
             }
 
             if (statusText != null)

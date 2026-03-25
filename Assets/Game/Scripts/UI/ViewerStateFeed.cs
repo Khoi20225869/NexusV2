@@ -83,7 +83,7 @@ namespace SoulForge.UI
             snapshotText.text =
                 $"Session: {snapshot.SessionId}\n" +
                 $"Viewer: {snapshot.ViewerId}\n" +
-                $"Room: {snapshot.RoomIndex}\n" +
+                $"Floor: {snapshot.RoomIndex}\n" +
                 $"Phase: {snapshot.RoomPhase}\n" +
                 $"HP: {snapshot.HostHp:0.0}\n" +
                 $"Shield: {snapshot.HostShield:0.0}\n" +
@@ -174,7 +174,7 @@ namespace SoulForge.UI
 
             summaryText.text =
                 $"Status: {(isConnected ? "Connected" : "Offline")}\n" +
-                $"Room: {roomIndex}\n" +
+                $"Floor: {roomIndex}\n" +
                 $"HP: {hp:0.0}\n" +
                 $"Crowns: {balance}\n" +
                 $"Budget: {budget}\n" +

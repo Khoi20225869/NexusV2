@@ -26,7 +26,7 @@ namespace SoulForge.Bootstrap
         [SerializeField] private Button startRunButton;
         [SerializeField] private HeroButtonView[] heroButtons;
         [SerializeField] private HubHeroPreviewController[] previewControllers;
-        [SerializeField] private string runSceneName = "Run_Prototype";
+        [SerializeField] private string runSceneName = "Floor_01";
 
         private HeroDefinition selectedHero;
 

@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: Weapon_Shotgun
   m_EditorClassIdentifier: Assembly-CSharp::SoulForge.Data.WeaponDefinition
   <WeaponId>k__BackingField: weapon_shotgun
-  <DisplayName>k__BackingField: Scatter Blaster
-  <Description>k__BackingField: Short-range burst weapon.
+  <DisplayName>k__BackingField: Breaker Axe
+  <Description>k__BackingField: Heavy axe with slower but harder hits.
   <Rarity>k__BackingField: 1
   <MinRoomTier>k__BackingField: 1
   <MaxRoomTier>k__BackingField: 2
@@ -22,5 +22,6 @@ MonoBehaviour:
   <ChestWeight>k__BackingField: 7
   <AccentColor>k__BackingField: {r: 0.52, g: 1, b: 0.62, a: 1}
   <Damage>k__BackingField: 2
-  <FireRate>k__BackingField: 1.2
-  <ProjectileSpeed>k__BackingField: 11
+  <FireRate>k__BackingField: 1.1
+  <AttackRange>k__BackingField: 1.45
+  <ProjectileSpeed>k__BackingField: 0

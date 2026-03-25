@@ -26,6 +26,7 @@ namespace SoulForge.Player
         private int equippedWeaponEntryIndex = -1;
 
         public event Action InventoryChanged;
+        public event Action<string> InventoryNotice;
 
         public IReadOnlyList<InventoryEntry> Entries => entries;
         public HeroDefinition CurrentHero => currentHero;
@@ -70,7 +71,13 @@ namespace SoulForge.Player
 
             if (entries.Count >= capacity)
             {
-                return false;
+                if (!TryReplaceWeapon(weaponDefinition, equipImmediately))
+                {
+                    InventoryNotice?.Invoke("Bag full");
+                    return false;
+                }
+
+                return true;
             }
 
             entries.Add(new InventoryEntry
@@ -89,6 +96,7 @@ namespace SoulForge.Player
             }
 
             InventoryChanged?.Invoke();
+            InventoryNotice?.Invoke($"Picked up {weaponDefinition.DisplayName}");
             return true;
         }
 
@@ -180,6 +188,73 @@ namespace SoulForge.Player
                 Rarity = WeaponRarity.Common
             });
             return true;
+        }
+
+        private bool TryReplaceWeapon(WeaponDefinition weaponDefinition, bool equipImmediately)
+        {
+            int replaceIndex = GetReplacementWeaponIndex(weaponDefinition);
+            if (replaceIndex < 0)
+            {
+                return false;
+            }
+
+            entries[replaceIndex] = new InventoryEntry
+            {
+                ItemId = weaponDefinition.WeaponId,
+                DisplayName = weaponDefinition.DisplayName,
+                Quantity = 1,
+                WeaponDefinition = weaponDefinition,
+                Equippable = true,
+                Rarity = weaponDefinition.Rarity
+            };
+
+            if (equipImmediately || replaceIndex == equippedWeaponEntryIndex)
+            {
+                EquipWeaponAtEntryIndex(replaceIndex);
+            }
+            else
+            {
+                InventoryChanged?.Invoke();
+            }
+
+            InventoryNotice?.Invoke($"Swapped in {weaponDefinition.DisplayName}");
+            return true;
+        }
+
+        private int GetReplacementWeaponIndex(WeaponDefinition incomingWeapon)
+        {
+            if (entries.Count == 0)
+            {
+                return -1;
+            }
+
+            if (equippedWeaponEntryIndex >= 0 && equippedWeaponEntryIndex < entries.Count)
+            {
+                return equippedWeaponEntryIndex;
+            }
+
+            int lowestRarityIndex = -1;
+            WeaponRarity lowestRarity = WeaponRarity.Epic;
+            for (int i = 0; i < entries.Count; i++)
+            {
+                if (!entries[i].Equippable || entries[i].WeaponDefinition == null)
+                {
+                    continue;
+                }
+
+                if (lowestRarityIndex < 0 || entries[i].Rarity < lowestRarity)
+                {
+                    lowestRarityIndex = i;
+                    lowestRarity = entries[i].Rarity;
+                }
+            }
+
+            if (lowestRarityIndex >= 0 && incomingWeapon != null && incomingWeapon.Rarity >= lowestRarity)
+            {
+                return lowestRarityIndex;
+            }
+
+            return lowestRarityIndex;
         }
     }
 }

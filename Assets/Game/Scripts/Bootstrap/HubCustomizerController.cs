@@ -29,7 +29,7 @@ namespace SoulForge.Bootstrap
         [SerializeField] private HubHeroPreviewController previewController;
         [SerializeField] private SpumCharacterView previewCharacterView;
         [SerializeField] private CustomizationRowView[] customizationRows;
-        [SerializeField] private string runSceneName = "Run_Prototype";
+        [SerializeField] private string runSceneName = "Floor_01";
 
         private HeroAppearanceSelection appearanceSelection;
 
@@ -52,6 +52,21 @@ namespace SoulForge.Bootstrap
 
         private void Start()
         {
+            if (!RunSessionState.HasHeroSelection)
+            {
+                RunSessionState.TryRestoreSavedProfile(fallbackHero: baseHeroDefinition);
+            }
+
+            if (RunSessionState.SelectedHero != null)
+            {
+                baseHeroDefinition = RunSessionState.SelectedHero;
+            }
+
+            if (RunSessionState.AppearanceSelection != null)
+            {
+                appearanceSelection = RunSessionState.AppearanceSelection.Clone();
+            }
+
             if (previewController == null)
             {
                 previewController = FindFirstObjectByType<HubHeroPreviewController>(FindObjectsInactive.Include);
@@ -238,6 +253,7 @@ namespace SoulForge.Bootstrap
             }
 
             RunSessionState.SetAppearance(appearanceSelection);
+            RunSessionState.SaveProfile(baseHeroDefinition, appearanceSelection);
 
             if (!Application.CanStreamedLevelBeLoaded(runSceneName))
             {

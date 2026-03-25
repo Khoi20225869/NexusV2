@@ -47,5 +47,17 @@ namespace SoulForge.Viewer
             onBudgetChanged?.Invoke(currentBudget);
             return true;
         }
+
+        public void AddBudget(int amount)
+        {
+            if (amount <= 0)
+            {
+                return;
+            }
+
+            currentBudget += amount;
+            BudgetChanged?.Invoke(currentBudget);
+            onBudgetChanged?.Invoke(currentBudget);
+        }
     }
 }

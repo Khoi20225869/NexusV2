@@ -22,13 +22,13 @@ namespace SoulForge.Editor
 {
     public static class SoulForgePrototypeSceneBuilder
     {
-        [MenuItem("Tools/SoulForge/Create Run Prototype Scene")]
+        [MenuItem("Tools/SoulForge/Create Demo Floor Scenes")]
         public static void CreateRunPrototypeScene()
         {
             SoulForgePrototypeAssetCreator.CreatePrototypeAssets();
 
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-            scene.name = "Run_Prototype";
+            scene.name = "Floor_01";
 
             CreateCamera();
             CreateEventSystem();
@@ -47,9 +47,7 @@ namespace SoulForge.Editor
             RoomController roomC = CreateRoom("Room_C", new Vector3(50f, 0f, 0f));
 
             AssignRunController(runController, playerHealth, roomA, roomB, roomC);
-            CreateTransitions(runController, roomA, roomB, roomC);
             CreateFinishGate(runController, roomC);
-            CreateBossSignal(runController, roomC);
 
             GameObject viewerRuntime = CreateViewerRuntime(runController, playerHealth, roomA);
             StateBroadcaster stateBroadcaster = viewerRuntime.GetComponent<StateBroadcaster>();
@@ -58,12 +56,14 @@ namespace SoulForge.Editor
             CreateUI(runController);
             AssignSelectionController(selectionController);
 
-            string scenePath = "Assets/Game/Scenes/Run_Prototype.unity";
+            string scenePath = "Assets/Game/Scenes/Floor_01.unity";
             EditorSceneManager.SaveScene(scene, scenePath);
+            DuplicateFloorScene(scenePath, "Assets/Game/Scenes/Floor_02.unity");
+            DuplicateFloorScene(scenePath, "Assets/Game/Scenes/Floor_03.unity");
             AddSceneToBuildSettings(scenePath);
             AssetDatabase.Refresh();
             EditorGUIUtility.PingObject(AssetDatabase.LoadAssetAtPath<SceneAsset>(scenePath));
-            Debug.Log("Run_Prototype baseline scene created.");
+            Debug.Log("Demo floor scenes created.");
         }
 
         private static void CreateCamera()
@@ -137,7 +137,6 @@ namespace SoulForge.Editor
         {
             HeroDefinition hero = AssetDatabase.LoadAssetAtPath<HeroDefinition>("Assets/Game/ScriptableObjects/Heroes/Hero_Knight.asset");
             WeaponDefinition pistol = AssetDatabase.LoadAssetAtPath<WeaponDefinition>("Assets/Game/ScriptableObjects/Weapons/Weapon_Pistol.asset");
-            Projectile projectilePrefab = CreateProjectilePrototypePrefab();
             TransientVisualEffect transientEffect = CreateTransientEffectPrefab();
             GameFeelController gameFeelController = Object.FindFirstObjectByType<GameFeelController>(FindObjectsInactive.Include);
 
@@ -156,13 +155,12 @@ namespace SoulForge.Editor
 
             SerializedObject playerAim = new(player.GetComponent<PlayerAim>());
             playerAim.FindProperty("weaponDefinition").objectReferenceValue = pistol;
-            playerAim.FindProperty("projectilePrefab").objectReferenceValue = projectilePrefab;
             playerAim.FindProperty("firePoint").objectReferenceValue = player.transform.Find("FirePoint");
             playerAim.FindProperty("visualRoot").objectReferenceValue = player.transform;
             playerAim.FindProperty("characterView").objectReferenceValue = player.GetComponent<SpumCharacterView>();
             playerAim.FindProperty("weaponRuntime").objectReferenceValue = player.GetComponent<WeaponRuntime>();
             playerAim.FindProperty("cameraFeedback").objectReferenceValue = Object.FindFirstObjectByType<CameraFeedback>();
-            playerAim.FindProperty("muzzleFlashPrefab").objectReferenceValue = transientEffect;
+            playerAim.FindProperty("hitEffectPrefab").objectReferenceValue = transientEffect;
             playerAim.FindProperty("gameFeelController").objectReferenceValue = gameFeelController;
             playerAim.ApplyModifiedPropertiesWithoutUndo();
 
@@ -565,12 +563,12 @@ namespace SoulForge.Editor
             ViewerActionQueue queue = viewerRuntime.AddComponent<ViewerActionQueue>();
             StateBroadcaster broadcaster = viewerRuntime.AddComponent<StateBroadcaster>();
             ViewerActionExecutor executor = viewerRuntime.AddComponent<ViewerActionExecutor>();
-            HostViewerWebSocketServer server = viewerRuntime.AddComponent<HostViewerWebSocketServer>();
             viewerRuntime.AddComponent<LocalViewerCommandTester>();
 
             ViewerStoreCatalog storeCatalog = AssetDatabase.LoadAssetAtPath<ViewerStoreCatalog>("Assets/Game/ScriptableObjects/Viewer/ViewerStoreCatalog.asset");
             ViewerEconomyConfig economyConfig = AssetDatabase.LoadAssetAtPath<ViewerEconomyConfig>("Assets/Game/ScriptableObjects/Viewer/ViewerEconomyConfig.asset");
             WeaponDefinition viewerDropWeapon = AssetDatabase.LoadAssetAtPath<WeaponDefinition>("Assets/Game/ScriptableObjects/Weapons/Weapon_ViewerDrop.asset");
+            WeaponPickup viewerPickupPrefab = CreateWeaponPickupPrefab();
 
             SerializedObject economySo = new(economyService);
             economySo.FindProperty("config").objectReferenceValue = economyConfig;
@@ -599,22 +597,12 @@ namespace SoulForge.Editor
             executorSo.FindProperty("playerHealth").objectReferenceValue = playerHealth;
             executorSo.FindProperty("playerWeaponController").objectReferenceValue = playerHealth.GetComponent<PlayerWeaponController>();
             executorSo.FindProperty("playerInventory").objectReferenceValue = playerHealth.GetComponent<PlayerInventory>();
-            executorSo.FindProperty("roomController").objectReferenceValue = roomA;
+            executorSo.FindProperty("runController").objectReferenceValue = runController;
             executorSo.FindProperty("viewerActionQueue").objectReferenceValue = queue;
             executorSo.FindProperty("roomBudgetService").objectReferenceValue = budgetService;
             executorSo.FindProperty("fallbackViewerWeapon").objectReferenceValue = viewerDropWeapon;
+            executorSo.FindProperty("viewerWeaponPickupPrefab").objectReferenceValue = viewerPickupPrefab;
             executorSo.ApplyModifiedPropertiesWithoutUndo();
-
-            SerializedObject serverSo = new(server);
-            serverSo.FindProperty("sessionService").objectReferenceValue = sessionService;
-            serverSo.FindProperty("stateBroadcaster").objectReferenceValue = broadcaster;
-            serverSo.FindProperty("actionExecutor").objectReferenceValue = executor;
-            serverSo.FindProperty("economyService").objectReferenceValue = economyService;
-            serverSo.FindProperty("runController").objectReferenceValue = runController;
-            serverSo.FindProperty("playerHealth").objectReferenceValue = playerHealth;
-            serverSo.FindProperty("viewerActionQueue").objectReferenceValue = queue;
-            serverSo.FindProperty("roomBudgetService").objectReferenceValue = budgetService;
-            serverSo.ApplyModifiedPropertiesWithoutUndo();
 
             _ = sessionService;
             return viewerRuntime;
@@ -627,50 +615,18 @@ namespace SoulForge.Editor
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        private static void CreateTransitions(RunController runController, RoomController roomA, RoomController roomB, RoomController roomC)
-        {
-            CreateTransition("Transition_A_B", runController, roomA, roomB, new Vector3(12f, 0f, 0f));
-            CreateTransition("Transition_B_C", runController, roomB, roomC, new Vector3(37f, 0f, 0f));
-        }
-
-        private static void CreateTransition(string name, RunController runController, RoomController sourceRoom, RoomController targetRoom, Vector3 position)
-        {
-            GameObject trigger = new(name);
-            trigger.transform.position = position;
-            BoxCollider2D collider = trigger.AddComponent<BoxCollider2D>();
-            collider.size = new Vector2(2f, 4f);
-            collider.isTrigger = true;
-
-            RoomTransitionTrigger transition = trigger.AddComponent<RoomTransitionTrigger>();
-            SerializedObject so = new(transition);
-            so.FindProperty("runController").objectReferenceValue = runController;
-            so.FindProperty("targetRoom").objectReferenceValue = targetRoom;
-            so.FindProperty("sourceRoom").objectReferenceValue = sourceRoom;
-            so.ApplyModifiedPropertiesWithoutUndo();
-        }
-
         private static void CreateFinishGate(RunController runController, RoomController finalRoom)
         {
             GameObject gate = new("FinishGate");
-            gate.transform.position = new Vector3(62f, 0f, 0f);
+            gate.transform.position = new Vector3(8.5f, -1.25f, 0f);
             BoxCollider2D collider = gate.AddComponent<BoxCollider2D>();
-            collider.size = new Vector2(2f, 4f);
+            collider.size = new Vector2(1.6f, 1.6f);
             collider.isTrigger = true;
 
             RunFinishGate finishGate = gate.AddComponent<RunFinishGate>();
             SerializedObject so = new(finishGate);
             so.FindProperty("runController").objectReferenceValue = runController;
             so.FindProperty("ownerRoom").objectReferenceValue = finalRoom;
-            so.ApplyModifiedPropertiesWithoutUndo();
-        }
-
-        private static void CreateBossSignal(RunController runController, RoomController finalRoom)
-        {
-            BossRoomSignal signal = finalRoom.gameObject.AddComponent<BossRoomSignal>();
-            SerializedObject so = new(signal);
-            so.FindProperty("runController").objectReferenceValue = runController;
-            so.FindProperty("ownerRoom").objectReferenceValue = finalRoom;
-            so.FindProperty("bossName").stringValue = "Forge Sentinel";
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
@@ -701,110 +657,39 @@ namespace SoulForge.Editor
             feelSo.FindProperty("audioSource").objectReferenceValue = audioSource;
             feelSo.ApplyModifiedPropertiesWithoutUndo();
 
-            GameObject viewerShell = new("ViewerShellUI");
-            viewerShell.transform.SetParent(canvasObject.transform, false);
-            ViewerHudPresenter viewerHudPresenter = viewerShell.AddComponent<ViewerHudPresenter>();
-            ViewerStateFeed stateFeed = viewerShell.AddComponent<ViewerStateFeed>();
-            ViewerEconomyPresenter economyPresenter = viewerShell.AddComponent<ViewerEconomyPresenter>();
-            ViewerControlsPresenter controlsPresenter = viewerShell.AddComponent<ViewerControlsPresenter>();
-            ViewerActionHistoryPresenter historyPresenter = viewerShell.AddComponent<ViewerActionHistoryPresenter>();
-            ViewerStorePresenter storePresenter = viewerShell.AddComponent<ViewerStorePresenter>();
-            _ = viewerHudPresenter;
-            _ = controlsPresenter;
-
-            GameObject runProgress = CreateText("RunProgressText", canvasObject.transform, new Vector2(140f, -20f), "Room 1/3");
+            GameObject runProgress = CreateText("RunProgressText", canvasObject.transform, new Vector2(140f, -20f), "Floor 1/3");
             RunProgressPresenter progressPresenter = runProgress.AddComponent<RunProgressPresenter>();
             SerializedObject progressSo = new(progressPresenter);
             progressSo.FindProperty("runController").objectReferenceValue = runController;
             progressSo.FindProperty("progressText").objectReferenceValue = runProgress.GetComponent<TMP_Text>();
             progressSo.ApplyModifiedPropertiesWithoutUndo();
-
-            GameObject snapshotText = CreateText("SnapshotText", viewerShell.transform, new Vector2(160f, -60f), "Snapshot");
-            GameObject deltaText = CreateText("DeltaText", viewerShell.transform, new Vector2(160f, -180f), "Delta");
-            GameObject actionResultText = CreateText("ActionResultText", viewerShell.transform, new Vector2(160f, -300f), "Action Result");
-            GameObject rawJsonText = CreateText("RawJsonText", viewerShell.transform, new Vector2(540f, -60f), "Raw JSON");
-            GameObject balanceText = CreateText("BalanceText", viewerShell.transform, new Vector2(540f, -260f), "Crowns");
-            GameObject budgetText = CreateText("BudgetText", viewerShell.transform, new Vector2(540f, -290f), "Budget");
-            GameObject controlsText = CreateText("ControlsText", viewerShell.transform, new Vector2(540f, -340f), "Controls");
-            GameObject historyText = CreateText("HistoryText", viewerShell.transform, new Vector2(540f, -420f), "History");
-            GameObject storeHeader = CreateText("StoreHeaderText", viewerShell.transform, new Vector2(860f, -60f), "Viewer Store");
-
-            AssignViewerUiReferences(stateFeed, economyPresenter, historyPresenter, storePresenter,
-                snapshotText, deltaText, actionResultText, rawJsonText, balanceText, budgetText, historyText, storeHeader);
-
-            CreateViewerStoreButtons(viewerShell.transform, storePresenter);
-            CreateCharacterSelectScreen(canvasObject.transform);
             CreateInventoryPanel(canvasObject.transform);
             CreateResultScreen(canvasObject.transform);
-        }
-
-        private static void CreateCharacterSelectScreen(Transform canvasRoot)
-        {
-            GameObject root = new("CharacterSelectScreen");
-            root.transform.SetParent(canvasRoot, false);
-            RectTransform rect = root.AddComponent<RectTransform>();
-            rect.anchorMin = new Vector2(0.5f, 0.5f);
-            rect.anchorMax = new Vector2(0.5f, 0.5f);
-            rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.sizeDelta = new Vector2(720f, 360f);
-
-            Image background = root.AddComponent<Image>();
-            background.color = new Color(0.05f, 0.07f, 0.1f, 0.92f);
-
-            CharacterSelectPresenter presenter = root.AddComponent<CharacterSelectPresenter>();
-            GameObject title = CreateCenteredText("CharacterSelectTitle", root.transform, new Vector2(0f, -24f), "Choose Your Hero", 30);
-            GameObject description = CreateCenteredText("CharacterSelectDescription", root.transform, new Vector2(0f, -78f), "Pick a class to start the run.", 18);
-
-            SerializedObject presenterSo = new(presenter);
-            presenterSo.FindProperty("root").objectReferenceValue = root;
-            presenterSo.FindProperty("titleText").objectReferenceValue = title.GetComponent<TMP_Text>();
-            presenterSo.FindProperty("descriptionText").objectReferenceValue = description.GetComponent<TMP_Text>();
-            presenterSo.FindProperty("heroButtons").arraySize = 3;
-
-            for (int i = 0; i < 3; i++)
-            {
-                Button heroButton = CreateActionButton($"HeroButton_{i + 1}", root.transform, new Vector2(-180f + i * 180f, -190f), $"Hero {i + 1}");
-                SerializedProperty buttonEntry = presenterSo.FindProperty("heroButtons").GetArrayElementAtIndex(i);
-                buttonEntry.FindPropertyRelative("Button").objectReferenceValue = heroButton;
-                buttonEntry.FindPropertyRelative("Label").objectReferenceValue = heroButton.GetComponentInChildren<TMP_Text>();
-            }
-
-            presenterSo.ApplyModifiedPropertiesWithoutUndo();
         }
 
         private static void CreateInventoryPanel(Transform canvasRoot)
         {
             GameObject inventoryRoot = new("InventoryPanel");
             inventoryRoot.transform.SetParent(canvasRoot, false);
-            RectTransform rect = inventoryRoot.AddComponent<RectTransform>();
-            rect.anchorMin = new Vector2(1f, 1f);
-            rect.anchorMax = new Vector2(1f, 1f);
-            rect.pivot = new Vector2(1f, 1f);
-            rect.anchoredPosition = new Vector2(-24f, -24f);
-            rect.sizeDelta = new Vector2(260f, 220f);
-
-            Image background = inventoryRoot.AddComponent<Image>();
-            background.color = new Color(0f, 0f, 0f, 0.65f);
-            Outline outline = inventoryRoot.AddComponent<Outline>();
-            outline.effectColor = new Color(1f, 1f, 1f, 0.16f);
-            outline.effectDistance = new Vector2(2f, -2f);
+            RectTransform rootRect = inventoryRoot.AddComponent<RectTransform>();
+            rootRect.anchorMin = new Vector2(1f, 1f);
+            rootRect.anchorMax = new Vector2(1f, 1f);
+            rootRect.pivot = new Vector2(1f, 1f);
+            rootRect.anchoredPosition = new Vector2(-24f, -24f);
+            rootRect.sizeDelta = new Vector2(156f, 40f);
 
             InventoryPresenter presenter = inventoryRoot.AddComponent<InventoryPresenter>();
-            GameObject heroText = CreateText("InventoryHeroText", inventoryRoot.transform, new Vector2(12f, -12f), "Hero: None");
-            GameObject equippedText = CreateText("InventoryEquippedText", inventoryRoot.transform, new Vector2(12f, -40f), "Equipped: None");
-            GameObject inventoryText = CreateText("InventoryListText", inventoryRoot.transform, new Vector2(12f, -68f), "Bag");
-            inventoryText.GetComponent<RectTransform>().sizeDelta = new Vector2(236f, 120f);
-            Button previousButton = CreateActionButton("InventoryPrevButton", inventoryRoot.transform, new Vector2(-48f, -188f), "Prev", new Vector2(88f, 34f));
-            Button nextButton = CreateActionButton("InventoryNextButton", inventoryRoot.transform, new Vector2(48f, -188f), "Next", new Vector2(88f, 34f));
+
+            Button toggleButton = CreateActionButton("InventoryToggleButton", inventoryRoot.transform, new Vector2(-78f, 0f), "Inventory", new Vector2(156f, 40f));
+            RectTransform toggleRect = toggleButton.GetComponent<RectTransform>();
+            toggleRect.anchorMin = new Vector2(1f, 1f);
+            toggleRect.anchorMax = new Vector2(1f, 1f);
+            toggleRect.pivot = new Vector2(1f, 1f);
+            toggleRect.anchoredPosition = Vector2.zero;
 
             SerializedObject presenterSo = new(presenter);
-            presenterSo.FindProperty("heroText").objectReferenceValue = heroText.GetComponent<TMP_Text>();
-            presenterSo.FindProperty("equippedText").objectReferenceValue = equippedText.GetComponent<TMP_Text>();
-            presenterSo.FindProperty("inventoryText").objectReferenceValue = inventoryText.GetComponent<TMP_Text>();
-            presenterSo.FindProperty("previousWeaponButton").objectReferenceValue = previousButton;
-            presenterSo.FindProperty("nextWeaponButton").objectReferenceValue = nextButton;
-            presenterSo.FindProperty("panelBackground").objectReferenceValue = background;
-            presenterSo.FindProperty("panelOutline").objectReferenceValue = outline;
+            presenterSo.FindProperty("toggleButton").objectReferenceValue = toggleButton;
+            presenterSo.FindProperty("toggleButtonText").objectReferenceValue = toggleButton.GetComponentInChildren<TMP_Text>();
             presenterSo.ApplyModifiedPropertiesWithoutUndo();
         }
 
@@ -824,80 +709,6 @@ namespace SoulForge.Editor
             tmp.fontSize = 20;
             tmp.color = Color.white;
             return textObject;
-        }
-
-        private static void AssignViewerUiReferences(
-            ViewerStateFeed stateFeed,
-            ViewerEconomyPresenter economyPresenter,
-            ViewerActionHistoryPresenter historyPresenter,
-            ViewerStorePresenter storePresenter,
-            GameObject snapshotText,
-            GameObject deltaText,
-            GameObject actionResultText,
-            GameObject rawJsonText,
-            GameObject balanceText,
-            GameObject budgetText,
-            GameObject historyText,
-            GameObject storeHeader)
-        {
-            SerializedObject stateFeedSo = new(stateFeed);
-            stateFeedSo.FindProperty("snapshotText").objectReferenceValue = snapshotText.GetComponent<TMP_Text>();
-            stateFeedSo.FindProperty("deltaText").objectReferenceValue = deltaText.GetComponent<TMP_Text>();
-            stateFeedSo.FindProperty("actionResultText").objectReferenceValue = actionResultText.GetComponent<TMP_Text>();
-            stateFeedSo.FindProperty("rawJsonText").objectReferenceValue = rawJsonText.GetComponent<TMP_Text>();
-            stateFeedSo.ApplyModifiedPropertiesWithoutUndo();
-
-            SerializedObject economySo = new(economyPresenter);
-            economySo.FindProperty("balanceText").objectReferenceValue = balanceText.GetComponent<TMP_Text>();
-            economySo.FindProperty("budgetText").objectReferenceValue = budgetText.GetComponent<TMP_Text>();
-            economySo.ApplyModifiedPropertiesWithoutUndo();
-
-            SerializedObject historySo = new(historyPresenter);
-            historySo.FindProperty("historyText").objectReferenceValue = historyText.GetComponent<TMP_Text>();
-            historySo.ApplyModifiedPropertiesWithoutUndo();
-
-            SerializedObject storeSo = new(storePresenter);
-            storeSo.FindProperty("headerText").objectReferenceValue = storeHeader.GetComponent<TMP_Text>();
-            storeSo.FindProperty("actionButtons").arraySize = 4;
-            storeSo.ApplyModifiedPropertiesWithoutUndo();
-        }
-
-        private static void CreateViewerStoreButtons(Transform viewerShell, ViewerStorePresenter storePresenter)
-        {
-            SerializedObject storeSo = new(storePresenter);
-            SerializedProperty buttons = storeSo.FindProperty("actionButtons");
-
-            for (int i = 0; i < 4; i++)
-            {
-                GameObject buttonObject = new($"StoreButton_{i + 1}");
-                buttonObject.transform.SetParent(viewerShell, false);
-                RectTransform rect = buttonObject.AddComponent<RectTransform>();
-                rect.anchorMin = new Vector2(0f, 1f);
-                rect.anchorMax = new Vector2(0f, 1f);
-                rect.pivot = new Vector2(0f, 1f);
-                rect.anchoredPosition = new Vector2(860f, -110f - i * 90f);
-                rect.sizeDelta = new Vector2(260f, 72f);
-
-                Image image = buttonObject.AddComponent<Image>();
-                image.color = new Color(0.18f, 0.45f, 0.24f, 1f);
-                buttonObject.AddComponent<Button>();
-                ViewerStoreButton storeButton = buttonObject.AddComponent<ViewerStoreButton>();
-
-                GameObject label = CreateText($"Label_{i + 1}", buttonObject.transform, new Vector2(12f, -8f), "Action");
-                GameObject price = CreateText($"Price_{i + 1}", buttonObject.transform, new Vector2(12f, -34f), "0");
-                GameObject state = CreateText($"State_{i + 1}", buttonObject.transform, new Vector2(140f, -22f), "Ready");
-
-                SerializedObject buttonSo = new(storeButton);
-                buttonSo.FindProperty("labelText").objectReferenceValue = label.GetComponent<TMP_Text>();
-                buttonSo.FindProperty("priceText").objectReferenceValue = price.GetComponent<TMP_Text>();
-                buttonSo.FindProperty("stateText").objectReferenceValue = state.GetComponent<TMP_Text>();
-                buttonSo.FindProperty("background").objectReferenceValue = image;
-                buttonSo.ApplyModifiedPropertiesWithoutUndo();
-
-                buttons.GetArrayElementAtIndex(i).objectReferenceValue = storeButton;
-            }
-
-            storeSo.ApplyModifiedPropertiesWithoutUndo();
         }
 
         private static void CreateResultScreen(Transform canvasRoot)
@@ -988,11 +799,9 @@ namespace SoulForge.Editor
         private static void AssignSelectionController(CharacterSelectionController selectionController)
         {
             HeroRosterDefinition roster = AssetDatabase.LoadAssetAtPath<HeroRosterDefinition>("Assets/Game/ScriptableObjects/Heroes/HeroRoster.asset");
-            CharacterSelectPresenter presenter = Object.FindFirstObjectByType<CharacterSelectPresenter>(FindObjectsInactive.Include);
 
             SerializedObject so = new(selectionController);
             so.FindProperty("heroRoster").objectReferenceValue = roster;
-            so.FindProperty("presenter").objectReferenceValue = presenter;
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
@@ -1009,25 +818,19 @@ namespace SoulForge.Editor
 
         private static void AddSceneToBuildSettings(string scenePath)
         {
-            const string hubScenePath = "Assets/Game/Scenes/Hub.unity";
-            const string runScenePath = "Assets/Game/Scenes/Run_Prototype.unity";
-            var orderedScenes = new System.Collections.Generic.List<EditorBuildSettingsScene>();
-            if (System.IO.File.Exists(hubScenePath))
+            _ = scenePath;
+            SoulForgeBoosterSceneBuilder.AddSceneToBuildSettings();
+        }
+
+        private static void DuplicateFloorScene(string sourceScenePath, string targetScenePath)
+        {
+            if (!System.IO.File.Exists(sourceScenePath))
             {
-                orderedScenes.Add(new EditorBuildSettingsScene(hubScenePath, true));
+                return;
             }
 
-            if (System.IO.File.Exists(runScenePath))
-            {
-                orderedScenes.Add(new EditorBuildSettingsScene(runScenePath, true));
-            }
-
-            if (!orderedScenes.Exists(scene => scene.path == scenePath))
-            {
-                orderedScenes.Add(new EditorBuildSettingsScene(scenePath, true));
-            }
-
-            EditorBuildSettings.scenes = orderedScenes.ToArray();
+            string sceneYaml = System.IO.File.ReadAllText(sourceScenePath);
+            System.IO.File.WriteAllText(targetScenePath, sceneYaml);
         }
     }
 }

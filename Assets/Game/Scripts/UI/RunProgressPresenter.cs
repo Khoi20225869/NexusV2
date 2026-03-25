@@ -24,8 +24,7 @@ namespace SoulForge.UI
                 return;
             }
 
-            int displayRoom = runController.RoomCount > 0 ? runController.RoomIndex + 1 : 0;
-            progressText.text = $"Room {displayRoom}/{runController.RoomCount}";
+            progressText.text = $"Floor {runController.FloorIndex}/{runController.FloorCount}";
         }
     }
 }

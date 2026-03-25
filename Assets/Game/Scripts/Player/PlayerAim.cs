@@ -4,6 +4,7 @@ using SoulForge.UI;
 using UnityEngine;
 using SoulForge.CameraSystem;
 using SoulForge.Feedback;
+using System.Collections.Generic;
 
 namespace SoulForge.Player
 {
@@ -11,14 +12,14 @@ namespace SoulForge.Player
     {
         [SerializeField] private Camera targetCamera;
         [SerializeField] private WeaponDefinition weaponDefinition;
-        [SerializeField] private Projectile projectilePrefab;
         [SerializeField] private Transform firePoint;
         [SerializeField] private Transform visualRoot;
         [SerializeField] private SpumCharacterView characterView;
         [SerializeField] private WeaponRuntime weaponRuntime;
         [SerializeField] private CameraFeedback cameraFeedback;
-        [SerializeField] private TransientVisualEffect muzzleFlashPrefab;
+        [SerializeField] private TransientVisualEffect hitEffectPrefab;
         [SerializeField] private GameFeelController gameFeelController;
+        [SerializeField] private float meleeRadius = 0.7f;
 
         private float fireCooldown;
 
@@ -96,26 +97,33 @@ namespace SoulForge.Player
 
         private void Fire(Vector2 aimDirection)
         {
-            if (projectilePrefab == null)
-            {
-                return;
-            }
-
             UpdateVisualFacing(aimDirection);
 
-            Transform spawnPoint = firePoint != null ? firePoint : transform;
-            Projectile projectile = Instantiate(projectilePrefab, spawnPoint.position, Quaternion.identity);
-            projectile.Initialize(
-                aimDirection,
-                GetProjectileSpeed(),
-                GetDamage(),
-                CombatTeam.Player);
+            Vector3 attackCenter = GetAttackCenter(aimDirection);
+            HashSet<IDamageable> damagedTargets = new();
+            Collider2D[] hits = Physics2D.OverlapCircleAll(attackCenter, meleeRadius);
+            bool hitAny = false;
+
+            for (int i = 0; i < hits.Length; i++)
+            {
+                if (!TryHitTarget(hits[i], damagedTargets))
+                {
+                    continue;
+                }
+
+                hitAny = true;
+            }
 
             fireCooldown = 1f / Mathf.Max(GetFireRate(), 0.01f);
             characterView?.PlayAttack();
             cameraFeedback?.PlayShotKick(aimDirection);
             gameFeelController?.PlayPlayerShot();
-            SpawnMuzzleFlash(spawnPoint.position, aimDirection);
+            if (hitAny)
+            {
+                gameFeelController?.PlayImpact(true, GetDamage());
+            }
+
+            SpawnHitEffect(attackCenter, aimDirection);
         }
 
         private float GetDamage()
@@ -138,25 +146,77 @@ namespace SoulForge.Player
             return weaponDefinition != null ? weaponDefinition.FireRate : 4f;
         }
 
-        private float GetProjectileSpeed()
+        private float GetAttackRange()
         {
             if (weaponRuntime != null && weaponRuntime.WeaponDefinition != null)
             {
-                return weaponRuntime.ProjectileSpeed;
+                return weaponRuntime.AttackRange;
             }
 
-            return weaponDefinition != null ? weaponDefinition.ProjectileSpeed : 14f;
+            return weaponDefinition != null ? weaponDefinition.AttackRange : 1.3f;
         }
 
-        private void SpawnMuzzleFlash(Vector3 position, Vector2 aimDirection)
+        private Vector3 GetAttackCenter(Vector2 aimDirection)
         {
-            if (muzzleFlashPrefab == null)
+            float range = Mathf.Max(0.2f, GetAttackRange());
+            if (firePoint != null)
+            {
+                range = Mathf.Max(range, Vector2.Distance(transform.position, firePoint.position));
+            }
+
+            return transform.position + (Vector3)(aimDirection * range);
+        }
+
+        private bool TryHitTarget(Collider2D hitCollider, HashSet<IDamageable> damagedTargets)
+        {
+            MonoBehaviour[] directBehaviours = hitCollider.GetComponents<MonoBehaviour>();
+            if (TryApplyDamage(directBehaviours, damagedTargets))
+            {
+                return true;
+            }
+
+            MonoBehaviour[] parentBehaviours = hitCollider.GetComponentsInParent<MonoBehaviour>();
+            return TryApplyDamage(parentBehaviours, damagedTargets);
+        }
+
+        private bool TryApplyDamage(MonoBehaviour[] behaviours, HashSet<IDamageable> damagedTargets)
+        {
+            for (int i = 0; i < behaviours.Length; i++)
+            {
+                if (behaviours[i] is not IDamageable damageable)
+                {
+                    continue;
+                }
+
+                if (damageable.Team == CombatTeam.Player || damageable.Team == CombatTeam.Neutral || damagedTargets.Contains(damageable))
+                {
+                    continue;
+                }
+
+                damagedTargets.Add(damageable);
+                damageable.ApplyDamage(GetDamage());
+                return true;
+            }
+
+            return false;
+        }
+
+        private void SpawnHitEffect(Vector3 position, Vector2 aimDirection)
+        {
+            if (hitEffectPrefab == null)
             {
                 return;
             }
 
-            TransientVisualEffect effect = Instantiate(muzzleFlashPrefab, position + (Vector3)(aimDirection * 0.15f), Quaternion.identity);
-            effect.Play(new Color(1f, 0.88f, 0.42f, 1f), 0.08f, 0.35f);
+            TransientVisualEffect effect = Instantiate(hitEffectPrefab, position + (Vector3)(aimDirection * 0.1f), Quaternion.identity);
+            effect.Play(new Color(1f, 0.88f, 0.42f, 1f), 0.1f, 0.45f);
+        }
+
+        private void OnDrawGizmosSelected()
+        {
+            Vector2 aimDirection = Application.isPlaying ? GetAimDirection() : Vector2.right;
+            Gizmos.color = new Color(1f, 0.25f, 0.2f, 0.45f);
+            Gizmos.DrawWireSphere(GetAttackCenter(aimDirection), meleeRadius);
         }
     }
 }

@@ -80,5 +80,34 @@ namespace SoulForge.Enemies
 
             return false;
         }
+
+        public bool SpawnByIdAt(string spawnId, Vector3 worldPosition)
+        {
+            if (string.IsNullOrWhiteSpace(spawnId))
+            {
+                return false;
+            }
+
+            PlayerHealth player = FindFirstObjectByType<PlayerHealth>();
+            if (player == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < spawnEntries.Count; i++)
+            {
+                SpawnEntry entry = spawnEntries[i];
+                if (entry.SpawnId != spawnId || entry.Prefab == null)
+                {
+                    continue;
+                }
+
+                EnemyController enemy = Instantiate(entry.Prefab, worldPosition, Quaternion.identity);
+                enemy.Initialize(entry.Definition, player, ownerRoom);
+                return true;
+            }
+
+            return false;
+        }
     }
 }

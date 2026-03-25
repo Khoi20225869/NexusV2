@@ -64,6 +64,11 @@ namespace SoulForge.Viewer
                 return ViewerCommandValidationResult.Fail("budget_exceeded");
             }
 
+            if (action.RequiresWorldTarget && !command.HasViewportTarget)
+            {
+                return ViewerCommandValidationResult.Fail("invalid_target");
+            }
+
             return ViewerCommandValidationResult.Ok();
         }
 
@@ -95,7 +100,7 @@ namespace SoulForge.Viewer
                 return false;
             }
 
-            ViewerCommand command = new("ui_preview", viewerId, action.ActionId, action.TargetId);
+            ViewerCommand command = new("ui_preview", viewerId, action.ActionId, action.TargetId, true);
             return Validate(command).IsValid;
         }
 

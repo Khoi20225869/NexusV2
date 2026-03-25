@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SoulForge.Data.HeroDefinition
   <HeroId>k__BackingField: hero_mage
   <DisplayName>k__BackingField: Mage
-  <Description>k__BackingField: Fragile caster with high utility weapon drops.
+  <Description>k__BackingField: Arc fighter using a charged spear.
   <StartingWeapon>k__BackingField: {fileID: 11400000, guid: 9aa5f7d771f48334186c74a44c34f932,
     type: 2}
   <CharacterPrefab>k__BackingField: {fileID: 5463278090079966405, guid: 9b681f402283b354892bf7b30be6ac3f,
